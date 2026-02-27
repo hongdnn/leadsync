@@ -1,407 +1,202 @@
 # LeadSync — PROJECT_IDEA.md
-> Coding agent context doc. Read before writing any code. Do not deviate from this scope.
-
-## One-Sentence Value Prop
-LeadSync is an agentic context engine that automatically enriches Jira tickets with personalized AI prompts and dev-specific rulesets — so developers never need to ping the tech lead for clarification.
+> Coding agent context doc. Read this entirely before writing any code.
 
 ---
 
-## The Problem We're Solving
+## What LeadSync Is
 
-Tech lead creates a quick Jira ticket → devs ping them 20x/day for context → LeadSync fires automatically on ticket creation/assignment, gathers context from Jira + GitHub, and attaches a copy-paste-ready AI prompt + ruleset directly in the ticket. Devs just open Jira, grab the file, paste into Claude Code.
+LeadSync is an agentic system that sits between a tech lead and their dev team. It removes the constant back-and-forth by doing three things automatically:
+
+1. When a Jira ticket is created, agents enrich it with a ready-to-use AI prompt the developer can paste directly into their coding environment.
+2. At the end of the day, an agent scans GitHub and posts a digest of what changed and overall progress to Slack.
+3. When a developer asks a question in Slack about a specific ticket, an agent responds with reasoning from the tech lead's perspective — not a ticket summary, but actual judgment informed by rules and context the tech lead has defined upfront.
 
 ---
 
-## The One Workflow (Do Not Add Others)
+## Three Distinct Workflows
+
+### Workflow 1 — Ticket Enrichment (Auto-triggered)
+
+**Trigger:** Jira webhook fires when a ticket is created or assigned.
+
+**What happens:**
+- Agent reads the ticket: title, minimal description, label, assignee.
+- Based on the label, it loads the matching ruleset template (backend / frontend / database).
+- Agent enriches the ticket in place: updates the title if vague, expands the description with relevant context inferred from the label + recent GitHub commits.
+- Agent generates a single, self-contained AI prompt that a developer can copy-paste directly into their coding agent (Cursor, Claude Code, etc.) to complete the task. This is one file, not two. It contains the task, context, constraints, and rules baked together — the developer needs zero additional input.
+- The prompt is attached to the Jira ticket as a comment or file attachment.
+
+**Output in Jira:**
+- Enriched ticket title and description (written by the agent, not the tech lead)
+- One attached file: `prompt-[ticket-key].md` — ready to paste into a coding agent
+
+---
+
+### Workflow 2 — End-of-Day Digest (Manually triggered for demo)
+
+**Trigger:** HTTP endpoint called manually during demo to simulate "end of day." No cron needed for hackathon.
+
+**What happens:**
+- Agent scans GitHub: all commits to main branch in the last 24 hours.
+- Agent groups commits by theme / area of the codebase.
+- Agent produces a natural-language summary: what changed, what's in progress, any patterns worth the tech lead's attention (e.g., multiple commits touching the same file, missing tests, etc.).
+- Summary is posted as a Slack message to a designated channel.
+
+**Output in Slack:**
+- One message with a structured daily digest: changes grouped by area, brief interpretation, overall progress signal.
+
+---
+
+### Workflow 3 — Slack Q&A for Developers (Slash command)
+
+**Trigger:** Developer types `/leadsync JIRA-123 [their question]` in Slack.
+
+**What happens:**
+- Agent retrieves the Jira ticket context.
+- Agent reasons from the perspective of the tech lead — not summarizing the ticket, but applying the tech lead's judgment.
+- The tech lead's judgment is informed by a "Tech Lead Context" config: a plain text document the tech lead fills in once, containing their architectural preferences, non-negotiables, common patterns the team should follow, and any ticket-specific notes. This config is stored server-side and injected into the agent's reasoning at query time.
+- Agent replies in Slack with a direct, opinionated answer as if the tech lead wrote it.
+
+**Example:**
+- Developer asks: "Should I add a new table for this or extend the users table?"
+- Agent answers based on the tech lead's defined preferences (e.g., "Prefer extending existing tables when adding fewer than 3 columns, per our schema minimalism rule") — not just restating the ticket.
+
+**Output in Slack:**
+- Threaded reply to the developer with a reasoned answer, not a summary.
+
+---
+
+## Tech Lead Context Config
+
+This is the key input that makes Workflow 3 non-trivial and demo-worthy.
+
+The tech lead fills in a structured plain-text config (stored in the system) that contains:
+- Architectural preferences ("we prefer async patterns everywhere")
+- Per-label rules ("backend tickets: always consider rate limiting impact")
+- Non-negotiables ("never introduce new global state")
+- Team-specific context ("Alice is strong on DB, Bob owns the auth layer")
+- Any freeform notes per ticket key that can be looked up at query time
+
+This config is what separates the Slack agent from a dumb ticket summarizer — it gives the agent a point of view.
+
+---
+
+## Ruleset Templates (Label-Based)
+
+Three templates stored as plain text files in the project:
+
+**backend ruleset** — async patterns, API contract stability, load considerations, error handling standards
+
+**frontend ruleset** — component boundaries, state management rules, accessibility requirements, testing standards
+
+**database ruleset** — migration safety, indexing requirements, query performance standards, transaction rules
+
+These are injected into the AI prompt generated in Workflow 1. They are also available to the Slack agent in Workflow 3 when reasoning about a ticket.
+
+---
+
+## Generated AI Prompt Structure (Workflow 1 output)
+
+The single attached prompt file must contain everything a developer needs to hand off to a coding agent with zero additional input:
 
 ```
-TRIGGER: Jira webhook → jira:issue_created OR jira:issue_assigned
-         POST /webhooks/jira  [FastAPI]
+## Task
+[What needs to be built — enriched from the ticket title/description]
 
-AGENT A — Context Gatherer
-  - Composio/Jira: fetch full issue (summary, description, labels, assignee, linked issues)
-  - Composio/GitHub: list_commits(repo, branch=main, since=last 24h)
+## Context
+[Recent commits to main that are relevant — summarized, not raw]
+[Linked tickets if any]
 
-AGENT B — Intent Reasoner
-  - Read ticket labels → select ruleset template:
-      "backend"  → load backend-ruleset.md
-      "frontend" → load frontend-ruleset.md
-      "database" → load db-ruleset.md
-  - LLM generates:
-      1. Personalized AI prompt (task + context + assignee role + rules + constraints + output format)
-      2. Dev-specific ruleset snippet (.claude.md style)
+## Constraints
+[Inferred from label ruleset + tech lead config]
+[What must not change or break]
 
-AGENT C — Propagator
-  - Composio/Jira: append enriched context to ticket description
-  - Composio/Jira: attach  ai-prompt-[assignee].md
-  - Composio/Jira: attach  rules-[assignee].md
-  - Composio/Jira: add comment "AI prompt + ruleset ready for Claude Code."
+## Implementation Rules
+[From the label-matched ruleset template]
 
-STRETCH (only if core is done and stable):
-  - Slack /context JIRA-123 → returns context summary from the attached prompt
-  - Skyfire token attached to Jira ticket (signed proof prompt is agent-generated)
+## Expected Output
+[Code, tests, and any spec/doc updates required]
 ```
 
----
-
-## Tech Stack (Locked — No Substitutions)
-
-| Layer | Choice | Notes |
-|-------|--------|-------|
-| Backend | FastAPI (Python) | Single file ok for MVP |
-| Agents | CrewAI — 3 agents, 1 sequential Flow | No more than 3 agents |
-| Tool layer | Composio ONLY | No raw API calls — judges are watching |
-| LLM | claude-3-5-sonnet-20240620 | Fallback: claude-3-opus |
-| Templates | 3 .md files in /templates | Hardcoded, no DB |
-| Tunnel | ngrok (local) → Railway (deploy) | |
-| Frontend | None | Logs/status page only if 2h+ ahead of schedule |
+This replaces the old two-file approach. One file. Paste and go.
 
 ---
 
-## Project File Structure
+## Project Structure (Logical, Not Prescriptive)
 
 ```
 leadsync/
-├── main.py                  # FastAPI app + webhook endpoint
-├── agents.py                # CrewAI agents + tasks + crew definition
-├── tools.py                 # Composio toolset initialization
+├── workflows/
+│   ├── ticket_enrichment     # Workflow 1 agents + logic
+│   ├── daily_digest          # Workflow 2 agents + logic
+│   └── slack_qa              # Workflow 3 agents + logic
 ├── templates/
 │   ├── backend-ruleset.md
 │   ├── frontend-ruleset.md
 │   └── db-ruleset.md
-├── requirements.txt
-└── .env                     # ANTHROPIC_API_KEY, COMPOSIO_API_KEY
+├── config/
+│   └── tech-lead-context.md  # Tech lead fills this in — drives Workflow 3
+├── api/
+│   └── main                  # HTTP endpoints: webhook, digest trigger, slack handler
+└── .env
 ```
 
 ---
 
-## Exact Dependencies
+## API Endpoints Needed
 
-```txt
-# requirements.txt
-fastapi==0.115.0
-uvicorn==0.32.0
-crewai==0.60.1
-composio-core==0.4.15
-composio-crewai==0.4.15
-python-dotenv
-```
+| Endpoint | Trigger | Purpose |
+|----------|---------|---------|
+| `POST /webhooks/jira` | Jira webhook | Fires Workflow 1 |
+| `POST /digest/trigger` | Manual HTTP call | Fires Workflow 2 (demo simulation of end-of-day) |
+| `POST /slack/commands` | Slack slash command | Fires Workflow 3 |
 
 ---
 
-## Core Code Skeleton
+## Demo Script (Live, ~4 minutes)
 
-### main.py
-```python
-from fastapi import FastAPI, Request
-from agents import context_crew
+### Beat 1 — Ticket Enrichment (90 sec)
+- Create a sparse Jira ticket: title "add rate limiting", label `backend`, assign to Alice. No description.
+- Show the ticket as-is: minimal, unhelpful.
+- Watch the backend logs: agents fire, GitHub is scanned, ruleset loaded, prompt generated.
+- Refresh Jira: title is cleaner, description is written, one attachment `prompt-LEADS-1.md` is there.
+- Open the file: a complete, paste-ready prompt. "Alice opens this, pastes into Claude Code, starts building."
 
-app = FastAPI()
+### Beat 2 — End-of-Day Digest (45 sec)
+- Hit `POST /digest/trigger` (curl or simple button in logs page).
+- Watch logs: agent scans commits, groups changes, writes summary.
+- Open Slack: message appears in channel with grouped digest and progress signal.
+- "Every evening, the team sees what actually shipped — zero manual standup prep."
 
-@app.post("/webhooks/jira")
-async def jira_webhook(request: Request):
-    payload = await request.json()
-    issue_key = payload["issue"]["key"]
-    result = context_crew.kickoff(inputs={"jira_payload": payload})
-    return {"status": "processed", "issue": issue_key}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
-### agents.py
-```python
-from crewai import Agent, Task, Crew, Process
-from composio_crewai import ComposioToolSet, App
-
-toolset = ComposioToolSet()
-jira_tools = toolset.get_tools(apps=[App.JIRA])
-github_tools = toolset.get_tools(apps=[App.GITHUB])
-
-context_gatherer = Agent(
-    role="Context Gatherer",
-    goal="Pull full Jira issue details and recent GitHub commits to main",
-    backstory="You extract raw context from Jira and GitHub for downstream agents.",
-    tools=[*jira_tools, *github_tools],
-    llm="claude-3-5-sonnet-20240620",
-    verbose=True,
-    max_iter=3
-)
-
-intent_reasoner = Agent(
-    role="Intent Reasoner",
-    goal="Generate a personalized AI prompt and dev ruleset based on ticket labels",
-    backstory="You translate technical context into actionable developer instructions.",
-    llm="claude-3-5-sonnet-20240620",
-    verbose=True,
-    max_iter=3
-)
-
-propagator = Agent(
-    role="Propagator",
-    goal="Update Jira ticket with enriched description and attach generated files",
-    backstory="You write back to Jira — updating descriptions and attaching prompt/ruleset files.",
-    tools=[*jira_tools],
-    llm="claude-3-5-sonnet-20240620",
-    verbose=True,
-    max_iter=3
-)
-
-gather_task = Task(
-    description=(
-        "Pull the full Jira issue for {jira_payload[issue][key]} including summary, "
-        "description, labels, assignee, and linked issues. "
-        "Also list GitHub commits to main in the last 24h for the relevant repo."
-    ),
-    agent=context_gatherer,
-    expected_output="Dict with issue details + list of recent commits"
-)
-
-reason_task = Task(
-    description=(
-        "Read ticket labels to select the correct ruleset template: "
-        "'backend' → backend-ruleset.md, 'frontend' → frontend-ruleset.md, 'database' → db-ruleset.md. "
-        "Load the matching template from the /templates/ directory. "
-        "Generate: (1) a personalized AI prompt for the assignee, (2) a dev ruleset snippet."
-    ),
-    agent=intent_reasoner,
-    context=[gather_task],
-    expected_output="Two markdown strings: ai_prompt and ruleset"
-)
-
-propagate_task = Task(
-    description=(
-        "Update the Jira ticket description with a context summary. "
-        "Attach ai-prompt-[assignee].md and rules-[assignee].md as file attachments. "
-        "Add comment: 'AI prompt + ruleset ready for Claude Code.'"
-    ),
-    agent=propagator,
-    context=[gather_task, reason_task],
-    expected_output="Confirmation that description updated, files attached, and comment posted"
-)
-
-context_crew = Crew(
-    agents=[context_gatherer, intent_reasoner, propagator],
-    tasks=[gather_task, reason_task, propagate_task],
-    process=Process.sequential,
-    verbose=True
-)
-```
-
----
-
-## Composio Setup (Run in This Order)
-
-```bash
-pip install composio-core composio-crewai crewai fastapi uvicorn python-dotenv
-
-# Authenticate (browser OAuth)
-composio add jira
-composio add github
-composio add slack  # only if doing stretch goal
-
-# Verify tools work BEFORE writing agent code
-composio run jira --action get_issue --args '{"issue_key": "LEADS-1"}'
-composio run github --action list_commits --args '{"owner": "yourorg", "repo": "userservice", "sha": "main"}'
-```
-
-**Do not proceed past Composio setup until both test commands return real data.**
-
----
-
-## Ruleset Templates (Hardcode These Exactly)
-
-### templates/backend-ruleset.md
-```markdown
-# Backend Ruleset
-
-ALWAYS:
-- Use async/await for all I/O
-- Add OpenAPI spec changes alongside code
-- Write load tests (target: 1000 req/min)
-- Use dependency injection, not global state
-
-NEVER:
-- Blocking I/O in async routes
-- Hardcoded secrets or config values
-- Skip error handling on external calls
-
-STACK DEFAULTS:
-- Rate limiting: Redis + token bucket
-- Auth: JWT, validated middleware-side
-- Logging: structured JSON
-```
-
-### templates/frontend-ruleset.md
-```markdown
-# Frontend Ruleset
-
-ALWAYS:
-- Component-first: one responsibility per component
-- Handle loading + error states explicitly
-- Write Storybook stories for UI components
-
-NEVER:
-- Fetch data in render functions
-- Inline styles (use CSS modules or Tailwind)
-- Skip accessibility attributes (aria-*)
-
-STACK DEFAULTS:
-- State: React Query for server state
-- Forms: React Hook Form + Zod validation
-- Testing: Vitest + Testing Library
-```
-
-### templates/db-ruleset.md
-```markdown
-# Database Ruleset
-
-ALWAYS:
-- Write migrations for every schema change
-- Add indexes on foreign keys and query columns
-- Use transactions for multi-table writes
-
-NEVER:
-- Raw string SQL (use parameterized queries)
-- Migrations that delete columns directly (deprecate first)
-- Skip EXPLAIN ANALYZE on new queries
-
-STACK DEFAULTS:
-- ORM: SQLAlchemy async
-- Migrations: Alembic
-- Connection pool: asyncpg, max 10 connections
-```
-
----
-
-## Generated AI Prompt Format (Agent B produces this)
-
-```markdown
-# AI Prompt for [ASSIGNEE] — [JIRA-KEY]
-
-## Task
-[ticket summary]
-
-## Context
-Recent commits to main (last 24h):
-- [commit message + files changed]
-- [commit message + files changed]
-
-Related tickets:
-- [linked issue summary if any]
-
-## Your Role
-[Assignee]'s context: [inferred from assignee name + label]
-
-## Rules
-[Contents of label-matched ruleset template]
-
-## Constraints
-- [Inferred from ticket description and commits]
-- Do not break existing interface contracts
-
-## Output Format
-1. Implementation code
-2. Unit tests
-3. Updated OpenAPI spec (if applicable)
-4. One-line changelog entry
-```
-
----
-
-## Golden Demo Data
-
-| Field | Value |
-|-------|-------|
-| Jira project | LEADS |
-| Ticket | LEADS-1 |
-| Summary | Add rate limiting to /api/users |
-| Label | `backend` |
-| Assignee | Alice |
-| GitHub repo | your fork with 3 recent main commits |
-| Expected output | 2 attachments + 1 comment in Jira |
-
-**Pre-stage these 3 commits in your GitHub repo main branch before the demo:**
-```
-feat: add Redis client initialization to user-service
-fix: remove in-memory session store
-chore: update rate limiter config schema
-```
-
----
-
-## Demo Script (2.5 min)
-
-| Time | Action | What judges see |
-|------|--------|-----------------|
-| 0:00–0:20 | Narrate the problem | "20 pings/day for context. LeadSync ends this." |
-| 0:20–0:40 | Create LEADS-1 in Jira | Label: backend, Assign: Alice |
-| 0:40–1:20 | Watch backend terminal | Agent A/B/C logs streaming live |
-| 1:20–2:00 | Refresh Jira ticket | 2 attachments + enriched description + comment |
-| 2:00–2:30 | Open ai-prompt-alice.md | "Paste into Claude Code. Done." |
-| 2:30–3:00 | Close | "Zero UI. Fits existing workflow. One webhook." |
-
----
-
-## Build Order (12h Engineering Budget)
-
-```
-[0–2h]   FastAPI /webhooks/jira + ngrok tunnel + Jira webhook pointing at it
-[2–5h]   CrewAI 3 agents + sequential flow + Composio tools wired
-[5–7h]   Ruleset templates + Agent B prompt generation verified
-[7–9h]   Agent C Jira attachments working end-to-end (test attach_file standalone first)
-[9–10h]  Full golden demo: run 10x, fix failures, add mock fallbacks if needed
-[10–11h] Slack /context Q&A (stretch — skip if behind)
-[11–12h] Skyfire token (stretch) + optional logs status page
-[12–24h] Pitch practice + record backup screen capture
-```
+### Beat 3 — Developer Q&A in Slack (45 sec)
+- Type `/leadsync LEADS-1 Should I extend the users table or create a new one?`
+- Watch logs: agent retrieves ticket, loads tech lead context config, reasons.
+- Reply appears in Slack: opinionated answer based on the tech lead's defined preferences.
+- "This is the tech lead's judgment, available 24/7, without the ping."
 
 ---
 
 ## What's Cut (Do Not Re-Add)
 
-- ❌ Notion updates
-- ❌ PR webhooks (main branch commits only, pulled on-demand via Composio)
-- ❌ Nightly digest
-- ❌ Custom dashboard or UI
-- ❌ More than 3 agents
-- ❌ Raw requests to Jira/GitHub API (Composio only)
-- ❌ Database or persistent storage
+- ❌ Two separate prompt + ruleset files — one prompt file only
+- ❌ PR webhooks — main branch commits pulled on-demand
+- ❌ Notion integration
+- ❌ Custom UI or dashboard (logs page acceptable for demo readability)
+- ❌ Nightly cron — digest is manually triggered for demo
+- ❌ Any persistent database — flat files and in-memory state only
+- ❌ LLM choice is not locked — to be determined during implementation
 
 ---
 
-## Failure Modes to Prevent
+## Coding Agent Rules
 
-| Risk | Prevention |
-|------|-----------|
-| Composio auth breaks at demo | Pre-auth all apps day before, test tokens explicitly |
-| Agent B picks wrong ruleset | Hardcode label→template map in task description, don't rely on LLM to infer |
-| Jira attachment API fails | Test `attach_file` Composio action standalone before wiring agents |
-| Agent hangs | Set `max_iter=3` on every agent |
-| ngrok URL changes | Use ngrok static domain or paid plan |
-| Silent failure | `verbose=True` on every Agent and Crew |
-
----
-
-## Environment Variables
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-COMPOSIO_API_KEY=...
-JIRA_PROJECT_KEY=LEADS
-GITHUB_ORG=yourorg
-GITHUB_REPO=userservice
-```
-
----
-
-## Coding Agent Rules (Non-Negotiable)
-
-1. **Composio only** — never call `requests.get("https://api.github.com/...")` directly
-2. **3 agents max** — gatherer, reasoner, propagator
-3. **Sequential process** — `Process.sequential`, not hierarchical or parallel
-4. **Templates are files** — load from `/templates/` dir at runtime, not hardcoded strings in prompts
-5. **Attachments are the deliverable** — `ai-prompt-[dev].md` and `rules-[dev].md` must appear in Jira as attachments
-6. **Demo path is sacred** — every code decision must keep the golden demo (LEADS-1, Alice, backend label) working
-7. **Verbose always** — never suppress logs during development or demo
+1. **Three workflows, three separate agent crews** — do not conflate them into one mega-flow.
+2. **One output file per ticket** — `prompt-[ticket-key].md` — not two files.
+3. **Tech Lead Context config is the reasoning backbone for Workflow 3** — it must be loaded and injected, not ignored.
+4. **Slack Q&A must reason, not summarize** — the agent response should feel like a judgment call, not a lookup.
+5. **Digest trigger is manual for demo** — an HTTP endpoint, not a scheduler.
+6. **LLM layer is undecided** — do not hardcode any specific model or provider. Design so it can be swapped.
+7. **No raw API calls** — use Composio for all Jira, GitHub, and Slack interactions.
+8. **Verbose logging everywhere** — this is a demo, logs are part of the show.
+9. **Templates are files** — loaded from `/templates/` at runtime.
+10. **Tech Lead Context is a file** — loaded from `/config/tech-lead-context.md` at runtime.
