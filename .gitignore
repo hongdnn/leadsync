@@ -37,3 +37,12 @@ htmlcov/
 
 # Logs
 *.log
+
+# Ramis Added
+.claude/
+.specstory/
+.mcp.json
+.cursorignore
+.cursorindxingignore
+.gemini/
+.cursor/
