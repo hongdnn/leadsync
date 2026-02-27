@@ -43,6 +43,6 @@ htmlcov/
 .specstory/
 .mcp.json
 .cursorignore
-.cursorindxingignore
+.cursorindexingignore
 .gemini/
 .cursor/

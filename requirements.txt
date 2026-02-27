@@ -1,6 +1,3 @@
 fastapi==0.115.0
 uvicorn==0.32.0
-crewai==0.60.1
-composio-core==0.4.15
-composio-crewai==0.4.15
 python-dotenv
