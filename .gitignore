@@ -25,6 +25,8 @@ htmlcov/
 .env
 .env.*
 *.local
+.composio-cache/
+!.env.example
 
 # IDE/editor files
 .vscode/
