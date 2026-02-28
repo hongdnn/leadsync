@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
 from src.leadsync_crew import run_leadsync_crew
+from src.prefs import append_preference
 from src.slack_crew import parse_slack_text, run_slack_crew
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,48 @@ async def slack_command(
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
 
     return {"status": "processed", "model": result.model, "result": result.raw}
+
+
+@app.post("/slack/prefs")
+async def slack_prefs(request: Request) -> dict[str, str]:
+    """
+    Handle /leadsync-prefs Slack slash command to append tech lead preferences.
+
+    Accepts Slack application/x-www-form-urlencoded payload.
+    Supported command: add <rule text>
+
+    Args:
+        request: FastAPI Request for content-type handling.
+    Returns:
+        Ephemeral Slack response confirming the preference was added.
+    Raises:
+        HTTPException 400: If text is empty or command is not 'add'.
+    """
+    raw_body = await request.body()
+    form_data = parse_qs(raw_body.decode("utf-8"))
+
+    if form_data.get("ssl_check", [""])[0].strip() == "1":
+        return {"status": "ok"}
+
+    text = form_data.get("text", [""])[0].strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Slack 'text' field is empty.")
+
+    if not text.lower().startswith("add "):
+        raise HTTPException(
+            status_code=400,
+            detail="Unknown command. Usage: /leadsync-prefs add <rule text>",
+        )
+
+    rule_text = text[4:].strip()
+    if not rule_text:
+        raise HTTPException(status_code=400, detail="Rule text cannot be empty.")
+
+    append_preference(rule_text)
+    return {
+        "response_type": "ephemeral",
+        "text": f"Preference added: {rule_text}",
+    }
 
 
 def _run_slack_crew_background(

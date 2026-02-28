@@ -182,3 +182,42 @@ def test_slack_command_unexpected_error_returns_500(mock_run, client):
     )
     assert response.status_code == 500
     assert "boom" in response.json()["detail"]
+
+
+# ── /slack/prefs endpoint ───────────────────────────────────────────────────
+
+@patch("src.main.append_preference")
+def test_slack_prefs_add_success(mock_append, client):
+    response = client.post(
+        "/slack/prefs",
+        content=b"text=add+Always+use+async",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["response_type"] == "ephemeral"
+    assert "Always use async" in data["text"]
+    mock_append.assert_called_once_with("Always use async")
+
+
+@patch("src.main.append_preference")
+def test_slack_prefs_empty_text_returns_400(mock_append, client):
+    response = client.post(
+        "/slack/prefs",
+        content=b"text=",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 400
+    mock_append.assert_not_called()
+
+
+@patch("src.main.append_preference")
+def test_slack_prefs_ssl_check_returns_ok(mock_append, client):
+    response = client.post(
+        "/slack/prefs",
+        content=b"ssl_check=1",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    mock_append.assert_not_called()
