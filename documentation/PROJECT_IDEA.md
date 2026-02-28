@@ -197,6 +197,57 @@ leadsync/
    analyze the last 5 completed Jira tickets in the same category and feed that context into Slack Q&A responses.
 2. GitHub intelligence enhancement:
    add daily scheduled repository analysis plus on-demand user-triggered summaries for "recent code changes" and task relation questions during the hackathon.
+3. **Tech Lead Preferences System:**
+   allow the tech lead to maintain a live preferences document that is automatically injected into AI responses. See below for full description.
+
+---
+
+## Tech Lead Preferences System
+
+### Why It Exists
+
+LeadSync targets fast-pace startup environments where developers frequently change seats or departments. A tech lead cannot be available 24/7 to answer implementation questions, and onboarding new developers to team conventions is slow. The preferences system makes the tech lead's judgment persistent and available on-demand — a document the tech lead maintains once and that informs every AI response automatically.
+
+### What It Is
+
+A plain text file (`config/tech-lead-context.md`) that the tech lead maintains with:
+- Architectural preferences (async patterns, service layer conventions)
+- Non-negotiables (no global state, no raw SQL)
+- Per-label rules (backend: always rate limit; database: prefer extending tables)
+- Team notes (who owns which layer)
+- Quick rules added live via Slack command
+
+The file is loaded at runtime (not cached) by Workflow 3, so every update is reflected in the next AI response with zero restart.
+
+### How It Works
+
+**Updating via Slack:** The tech lead types `/leadsync-prefs add "rule text"` in Slack. The command appends a new bullet to a dedicated `## Quick Rules (added via Slack)` section in `config/tech-lead-context.md`. Slack shows an ephemeral confirmation immediately.
+
+**AI injection:** Every time a developer asks `/leadsync TICKET-X question`, the Slack Q&A crew loads the full preferences file and passes it to the Tech Lead Reasoner agent. The AI answers from the tech lead's defined perspective, not from generic knowledge.
+
+### Scope (Hackathon)
+
+- Add-only via Slack slash command (`/leadsync-prefs add "..."`)
+- Preferences apply to Workflow 3 (Slack Q&A) only
+- No authentication — single-tenant hackathon demo
+- No deletion or versioning — append-only for simplicity
+
+### Implementation
+
+| Component | Description |
+|-----------|-------------|
+| `src/prefs.py` | `load_preferences()` and `append_preference(text)` |
+| `POST /slack/prefs` | Slack slash command handler in `main.py` |
+| `slack_crew.py` | Refactored to use `prefs.load_preferences()` |
+| `tests/test_prefs.py` | Unit tests for the preferences module |
+
+### Demo Beat (30 seconds)
+
+1. Show current `config/tech-lead-context.md` — team's existing rules visible.
+2. Type `/leadsync-prefs add "Never call sync DB from async handlers"` in Slack.
+3. Slack confirms: "Preference added."
+4. Ask `/leadsync LEADS-X Should I use a sync query here?`
+5. AI answer cites the just-added rule — live, no restart needed.
 
 ---
 

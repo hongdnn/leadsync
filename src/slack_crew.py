@@ -1,6 +1,6 @@
 """
 src/slack_crew.py
-Workflow 3: Slack Q&A — Context Retriever -> Tech Lead Reasoner -> Slack Responder.
+Workflow 3: Slack Q&A — Context Retriever -> Solution Reasoner -> Slack Responder.
 Exports: run_slack_crew(ticket_key, question, thread_ts, channel_id), parse_slack_text(text)
 """
 
@@ -54,7 +54,7 @@ def run_slack_crew(
         CrewRunResult with raw output and model used.
     Raises:
         RuntimeError: If required environment variables are missing, or if the
-            tech lead preferences file (config/tech-lead-context.md) is absent.
+            team preferences file (config/tech-lead-context.md) is absent.
         Exception: If kickoff fails and fallback logic also fails.
     Side effects:
         Reads Jira context and posts an answer through Composio Slack tools.
@@ -63,7 +63,7 @@ def run_slack_crew(
     _required_gemini_api_key()
     composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
     slack_channel_id = channel_id or _required_env("SLACK_CHANNEL_ID")
-    tech_lead_context = load_preferences()
+    team_preferences = load_preferences()
 
     retriever = Agent(
         role="Context Retriever",
@@ -74,9 +74,9 @@ def run_slack_crew(
         llm=model,
     )
     reasoner = Agent(
-        role="Tech Lead Reasoner",
-        goal="Answer from the team's tech lead perspective using project constraints.",
-        backstory="You provide direct guidance and cite rules when relevant.",
+        role="Solution Reasoner",
+        goal="Recommend implementation approaches based on ticket context and team guidelines.",
+        backstory="You suggest concrete solutions and cite relevant project constraints.",
         verbose=True,
         llm=model,
     )
@@ -100,13 +100,13 @@ def run_slack_crew(
     )
     reason_task = Task(
         description=(
-            "Use the ticket context and this tech lead guidance:\n"
-            f"---\n{tech_lead_context}\n---\n"
+            "Use the ticket context and these team implementation guidelines:\n"
+            f"---\n{team_preferences}\n---\n"
             f"Question: {question}\n"
-            "- Return a direct recommendation in 2-4 sentences.\n"
+            "- Return a concrete implementation recommendation in 2-4 sentences.\n"
             "- Mention tradeoffs when they matter."
         ),
-        expected_output="Opinionated answer that references relevant project constraints.",
+        expected_output="Actionable recommendation that references relevant project constraints.",
         agent=reasoner,
         context=[retrieve_task],
     )
@@ -119,7 +119,7 @@ def run_slack_crew(
         description=(
             f"Post the answer to Slack channel {slack_channel_id}.\n"
             f"{thread_instruction}"
-            f"- Prefix with '[{ticket_key}] Tech Lead says:'."
+            f"- Prefix with '[{ticket_key}] Suggested approach:'."
         ),
         expected_output="Confirmation that Slack message was posted.",
         agent=responder,

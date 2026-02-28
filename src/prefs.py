@@ -1,6 +1,6 @@
 """
 src/prefs.py
-Tech lead preferences loader and updater.
+Team preferences loader and updater.
 Exports: load_preferences, append_preference
 """
 
@@ -15,7 +15,7 @@ _QUICK_RULES_HEADER = "## Quick Rules (added via Slack)"
 
 def load_preferences() -> str:
     """
-    Read and return the tech lead context file.
+    Read and return the team preferences file.
 
     Returns:
         Full markdown content of config/tech-lead-context.md.
@@ -25,9 +25,9 @@ def load_preferences() -> str:
     try:
         return TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
-        logger.error("Tech lead context file not found: %s", TECH_LEAD_CONTEXT_PATH)
+        logger.error("Team preferences file not found: %s", TECH_LEAD_CONTEXT_PATH)
         raise RuntimeError(
-            f"Tech lead preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
+            f"Team preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
             "Create config/tech-lead-context.md to enable preference loading."
         ) from None
 
@@ -51,9 +51,9 @@ def append_preference(text: str) -> None:
     try:
         content = TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
-        logger.error("Tech lead context file not found: %s", TECH_LEAD_CONTEXT_PATH)
+        logger.error("Team preferences file not found: %s", TECH_LEAD_CONTEXT_PATH)
         raise RuntimeError(
-            f"Tech lead preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
+            f"Team preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
             "Create config/tech-lead-context.md to enable preference loading."
         ) from None
     new_bullet = f"- {text.strip()}"

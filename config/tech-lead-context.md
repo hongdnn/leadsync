@@ -1,4 +1,4 @@
-# Tech Lead Context — LeadSync Team
+# Team Implementation Preferences — LeadSync
 
 ## Architectural Preferences
 

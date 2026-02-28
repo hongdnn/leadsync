@@ -155,7 +155,7 @@ async def slack_command(
 @app.post("/slack/prefs")
 async def slack_prefs(request: Request) -> dict[str, str]:
     """
-    Handle /leadsync-prefs Slack slash command to append tech lead preferences.
+    Handle /leadsync-prefs Slack slash command to append team preferences.
 
     Accepts Slack application/x-www-form-urlencoded payload.
     Supported command: add <rule text>
