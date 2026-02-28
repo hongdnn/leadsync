@@ -12,6 +12,16 @@ class Config:
         return value
 
     @staticmethod
+    def require_gemini_api_key() -> str:
+        value = os.getenv("GEMINI_API_KEY", "").strip()
+        if value:
+            return value
+        legacy_value = os.getenv("GOOGLE_API_KEY", "").strip()
+        if legacy_value:
+            return legacy_value
+        raise RuntimeError("Missing required env var: GEMINI_API_KEY (or GOOGLE_API_KEY)")
+
+    @staticmethod
     def get_gemini_model() -> str:
         return os.getenv("LEADSYNC_GEMINI_MODEL", Config.DEFAULT_GEMINI_MODEL)
 

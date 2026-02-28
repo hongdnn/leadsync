@@ -11,6 +11,10 @@ LeadSync is an agentic system that sits between a tech lead and their dev team. 
 2. At the end of the day, an agent scans GitHub and posts a digest of what changed and overall progress to Slack.
 3. When a developer asks a question in Slack about a specific ticket, an agent responds with reasoning from the tech lead's perspective — not a ticket summary, but actual judgment informed by rules and context the tech lead has defined upfront.
 
+**Current implementation status (2026-02-28):**
+- Basic Jira + Composio + Slack integration is working end-to-end for MVP flows.
+- Workflow 3 already retrieves Jira context and returns reasoned LLM answers in Slack command flow.
+
 ---
 
 ## Three Distinct Workflows
@@ -63,6 +67,7 @@ LeadSync is an agentic system that sits between a tech lead and their dev team. 
 
 **Output in Slack:**
 - Threaded reply to the developer with a reasoned answer, not a summary.
+- Planned robustness upgrade: include precedent context from the last 5 completed Jira tickets in the same category before final reasoning.
 
 ---
 
@@ -185,6 +190,13 @@ leadsync/
 - ❌ Nightly cron — digest is manually triggered for demo
 - ❌ Any persistent database — flat files and in-memory state only
 - ❌ LLM choice is not locked — to be determined during implementation
+
+## Planned Extensions (Hackathon Scope)
+
+1. Workflow 3 historical context enhancement:
+   analyze the last 5 completed Jira tickets in the same category and feed that context into Slack Q&A responses.
+2. GitHub intelligence enhancement:
+   add daily scheduled repository analysis plus on-demand user-triggered summaries for "recent code changes" and task relation questions during the hackathon.
 
 ---
 

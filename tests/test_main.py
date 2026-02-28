@@ -32,6 +32,32 @@ def test_jira_webhook_success(mock_run, client):
     assert data["result"] == "done"
 
 
+@patch("src.main.run_digest_crew")
+def test_digest_trigger_success(mock_run, client):
+    mock_run.return_value = MagicMock(raw="digest posted", model="gemini/gemini-2.5-flash")
+    response = client.post("/digest/trigger")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "processed"
+    assert data["result"] == "digest posted"
+
+
+@patch("src.main.run_digest_crew")
+def test_digest_trigger_runtime_error_returns_400(mock_run, client):
+    mock_run.side_effect = RuntimeError("Missing required env var: SLACK_CHANNEL_ID")
+    response = client.post("/digest/trigger")
+    assert response.status_code == 400
+    assert "SLACK_CHANNEL_ID" in response.json()["detail"]
+
+
+@patch("src.main.run_digest_crew")
+def test_digest_trigger_unexpected_error_returns_500(mock_run, client):
+    mock_run.side_effect = Exception("digest boom")
+    response = client.post("/digest/trigger")
+    assert response.status_code == 500
+    assert "digest boom" in response.json()["detail"]
+
+
 @patch("src.main.run_leadsync_crew")
 def test_jira_webhook_runtime_error_returns_400(mock_run, client):
     mock_run.side_effect = RuntimeError("Missing required env var: COMPOSIO_API_KEY")
@@ -59,7 +85,12 @@ def test_slack_command_json_success(mock_run, client):
     data = response.json()
     assert data["status"] == "processed"
     assert data["result"] == "reply posted"
-    mock_run.assert_called_once_with(ticket_key="LEADS-1", question="Should I use async?")
+    mock_run.assert_called_once_with(
+        ticket_key="LEADS-1",
+        question="Should I use async?",
+        thread_ts=None,
+        channel_id=None,
+    )
 
 
 @patch("src.main.run_slack_crew")
@@ -67,11 +98,35 @@ def test_slack_command_form_encoded_success(mock_run, client):
     mock_run.return_value = MagicMock(raw="ok", model="gemini/gemini-2.5-flash")
     response = client.post(
         "/slack/commands",
-        content=b"text=LEADS-2+Use+async%3F",
+        content=b"text=LEADS-2+Use+async%3F&thread_ts=1711111.1&channel_id=C123",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == 200
-    mock_run.assert_called_once_with(ticket_key="LEADS-2", question="Use async?")
+    data = response.json()
+    assert data["response_type"] == "ephemeral"
+    assert "LEADS-2" in data["text"]
+    mock_run.assert_called_once_with(
+        ticket_key="LEADS-2",
+        question="Use async?",
+        thread_ts="1711111.1",
+        channel_id="C123",
+    )
+
+
+@patch("src.main.run_slack_crew")
+def test_slack_command_json_text_parsing_success(mock_run, client):
+    mock_run.return_value = MagicMock(raw="ok", model="gemini/gemini-2.5-flash")
+    response = client.post(
+        "/slack/commands",
+        json={"text": "LEADS-3 Should we split this table?", "channel_id": "C123"},
+    )
+    assert response.status_code == 200
+    mock_run.assert_called_once_with(
+        ticket_key="LEADS-3",
+        question="Should we split this table?",
+        thread_ts=None,
+        channel_id="C123",
+    )
 
 
 @patch("src.main.run_slack_crew")
@@ -93,6 +148,18 @@ def test_slack_command_empty_form_text_returns_400(mock_run, client):
     )
     assert response.status_code == 400
     assert "empty" in response.json()["detail"]
+
+
+@patch("src.main.run_slack_crew")
+def test_slack_command_ssl_check_returns_ok_without_running_crew(mock_run, client):
+    response = client.post(
+        "/slack/commands",
+        content=b"ssl_check=1",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    mock_run.assert_not_called()
 
 
 @patch("src.main.run_slack_crew")

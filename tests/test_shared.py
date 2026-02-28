@@ -27,6 +27,28 @@ def test_required_env_returns_value(monkeypatch):
     assert _required_env("MY_VAR") == "hello"
 
 
+def test_required_gemini_api_key_prefers_gemini(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "legacy-key")
+    from src.shared import _required_gemini_api_key
+    assert _required_gemini_api_key() == "gemini-key"
+
+
+def test_required_gemini_api_key_falls_back_to_legacy(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "legacy-key")
+    from src.shared import _required_gemini_api_key
+    assert _required_gemini_api_key() == "legacy-key"
+
+
+def test_required_gemini_api_key_raises_when_missing(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    from src.shared import _required_gemini_api_key
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        _required_gemini_api_key()
+
+
 def test_build_llm_returns_default_when_unset(monkeypatch):
     monkeypatch.delenv("LEADSYNC_GEMINI_MODEL", raising=False)
     from src.shared import build_llm, DEFAULT_GEMINI_MODEL
@@ -61,7 +83,7 @@ def test_build_tools_returns_tool_list(monkeypatch):
 
     assert result == fake_tools
     mock_composio_instance.tools.get.assert_called_once_with(
-        user_id="default", toolkits=["JIRA", "SLACK"]
+        user_id="default", toolkits=["JIRA", "SLACK"], limit=200
     )
 
 

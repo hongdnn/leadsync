@@ -4,6 +4,7 @@ Workflow 1: Ticket Enrichment — Context Gatherer → Intent Reasoner → Propa
 Exports: run_leadsync_crew(payload) -> CrewRunResult
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from crewai import Agent, Crew, Process, Task
 from src.config import Config
 from src.shared import CrewRunResult
 from src.tools.jira_tools import get_agent_tools
+
+logger = logging.getLogger(__name__)
 
 
 def _tool_name_set(tools: list[Any]) -> set[str]:
@@ -36,7 +39,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     Side effects:
         Writes back to Jira via Composio tools.
     """
-    Config.require_env("GOOGLE_API_KEY")
+    Config.require_gemini_api_key()
     model = Config.get_gemini_model()
     tools = get_agent_tools()
     tool_names = _tool_name_set(tools)
@@ -188,8 +191,10 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     try:
         result = crew.kickoff()
     except Exception as exc:
+        logger.exception("LeadSync crew kickoff failed for model '%s'.", model)
         if "-latest" in model and "NOT_FOUND" in str(exc):
             fallback_model = model.replace("-latest", "")
+            logger.warning("Retrying LeadSync crew with fallback model '%s'.", fallback_model)
             gatherer.llm = fallback_model
             reasoner.llm = fallback_model
             propagator.llm = fallback_model

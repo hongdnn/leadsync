@@ -1,7 +1,7 @@
 """
 src/shared.py
 Shared utilities for all LeadSync crew files.
-Exports: _required_env, build_llm, build_tools, CrewRunResult
+Exports: _required_env, _required_gemini_api_key, build_llm, build_tools, CrewRunResult
 """
 
 import os
@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
+DEFAULT_TOOL_LIMIT = 200
 
 
 @dataclass
@@ -35,6 +36,24 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _required_gemini_api_key() -> str:
+    """
+    Read the required Gemini API key with legacy fallback support.
+
+    Returns:
+        Gemini API key value.
+    Raises:
+        RuntimeError: If neither GEMINI_API_KEY nor GOOGLE_API_KEY is set.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        return gemini_key
+    legacy_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if legacy_key:
+        return legacy_key
+    raise RuntimeError("Missing required env var: GEMINI_API_KEY (or GOOGLE_API_KEY)")
+
+
 def build_llm() -> str:
     """
     Return the configured Gemini model name.
@@ -48,13 +67,14 @@ def build_llm() -> str:
     return os.getenv("LEADSYNC_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
 
-def build_tools(user_id: str, toolkits: list[str]) -> list[Any]:
+def build_tools(user_id: str, toolkits: list[str], limit: int = DEFAULT_TOOL_LIMIT) -> list[Any]:
     """
     Build Composio tool list for CrewAI agents.
 
     Args:
         user_id: Composio user identifier.
         toolkits: List of toolkit names e.g. ['JIRA', 'SLACK'].
+        limit: Max number of tool definitions returned by Composio.
     Returns:
         List of CrewAI-compatible tool objects.
     Side effects:
@@ -68,4 +88,4 @@ def build_tools(user_id: str, toolkits: list[str]) -> list[Any]:
     from composio_crewai import CrewAIProvider
 
     composio = Composio(provider=CrewAIProvider())
-    return composio.tools.get(user_id=user_id, toolkits=toolkits)
+    return composio.tools.get(user_id=user_id, toolkits=toolkits, limit=limit)
