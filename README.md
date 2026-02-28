@@ -91,9 +91,105 @@ A developer creates a barebones Jira ticket — just a title, a label (`backend`
 
 The developer copies the prompt into Cursor, Claude Code, or any coding agent and starts building — zero additional context needed.
 
+**WF1 Internal Flow:**
+
+```
+POST /webhooks/jira
+        │
+  ┌─────┴─────┐
+  ▼            ▼
+Done?        Other
+→ WF6        → WF1
+               │
+        parse_issue_context()
+        extract: key, summary, labels[], components[], assignee
+               │
+        resolve_preference_category()
+        ┌──────┼──────────┐
+        ▼      ▼          ▼
+     FRONTEND DATABASE  BACKEND (default)
+        └──────┼──────────┘
+               │
+     ┌─────────┴─────────┐
+     ▼                   ▼
+  Load Google Doc     Load same-label
+  prefs for category  ticket history (last 10)
+     │                   │
+     └────────┬──────────┘
+              ▼
+  ┌─ Context Gatherer (Agent 1) ──────────────┐
+  │  • Fetch Jira issue details                │
+  │  • Scan last 24h GitHub commits            │
+  │  • Identify 3-8 key files (demo/ scope)    │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  ┌─ Intent Reasoner (Agent 2, no tools) ─────┐
+  │  • Generate prompt-*.md with 6 sections:   │
+  │    Task → Context → Key Files →            │
+  │    Constraints → Implementation Rules →    │
+  │    Expected Output                         │
+  │  • Inject team preferences into rules      │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  ┌─ Propagator (Agent 3) ────────────────────┐
+  │  • Attach prompt-[KEY].md to Jira          │
+  │  • Enrich ticket description               │
+  │  • Post comment with same-label history    │
+  └────────────────────────────────────────────┘
+              │
+        Key file fallback:
+        Gatherer found demo/ files? ──► use them
+        No? ──► suggest_demo_key_files()
+               (token overlap scoring)
+        Still none? ──► RuntimeError
+```
+
 ### 2. End-of-Day Digest — Slack
 
 On trigger (manual HTTP call or Railway Cron schedule), agents scan the GitHub repo for recent commits, group them by area of the codebase, and post a structured summary to Slack — what shipped, what's in progress, and patterns worth attention. If nothing shipped, a heartbeat message is posted so the channel stays active. Zero manual standup prep.
+
+**WF2 Internal Flow:**
+
+```
+POST /digest/trigger
+        │
+  Token check (X-LeadSync-Trigger-Token)
+  ├─ No token env var → public access
+  ├─ Token matches    → allow
+  └─ Mismatch         → 401
+        │
+  Parse optional JSON body
+  Extract: window_minutes (default 60), bucket_start_utc, run_source
+        │
+  Idempotency check (if bucket_start_utc + memory enabled)
+  ├─ Lock acquired     → continue
+  └─ Duplicate bucket  → return "skipped"
+        │
+  since_iso = now() - window_minutes
+        │
+  ┌─ GitHub Scanner (Agent 1) ────────────────┐
+  │  • List commits since {since_iso}          │
+  │  • For each: fetch SHA, author, files,     │
+  │    patch (first 30 lines/file)             │
+  │  • No commits? → return "NO_COMMITS"       │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  ┌─ Digest Writer (Agent 2, no tools) ───────┐
+  │  NO_COMMITS path:                          │
+  │    → hardcoded "No changes" heartbeat      │
+  │  HAS_COMMITS path:                         │
+  │    → group by area (max 8 blocks)          │
+  │    → extract: authors, files, code-level   │
+  │      changes from patches, decisions       │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  ┌─ Slack Poster (Agent 3) ──────────────────┐
+  │  • Format as Slack mrkdwn                  │
+  │  • Label: "Daily" if ≥1440min, else        │
+  │    "Hourly"                                │
+  │  • Post to SLACK_CHANNEL_ID                │
+  └────────────────────────────────────────────┘
+```
 
 ### 3. Slack Q&A — Any Team Member
 
@@ -109,6 +205,51 @@ Any developer types `/leadsync TICKET-123 Should I use a new table or extend use
 
 The answer feels like the tech lead's judgment — not a ticket summary.
 
+**WF3 Internal Flow:**
+
+```
+Slack message: /leadsync TICKET-123 "Should I use Redis?"
+        │
+        ▼
+  Parse ticket_key + question
+        │
+        ▼
+  Jira GET_ISSUE ──► extract labels[] & components[]
+        │
+        ▼
+  resolve_preference_category()
+  ┌─────────────────────────────────────┐
+  │ labels/components contain:          │
+  │   "frontend" → FRONTEND             │
+  │   "database"/"db" → DATABASE         │
+  │   default → BACKEND                 │
+  └──────────────┬──────────────────────┘
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+  Load Google Doc     Load same-label
+  prefs for category  ticket history
+        │                 │
+        └────────┬────────┘
+                 ▼
+  Context Retriever classifies question
+        │
+  ┌─────┼──────────────────┐
+  ▼     ▼                  ▼
+IMPL  PROGRESS           GENERAL
+  │     │                  │
+  │     │                  └─► Factual ticket info only
+  │     │                      (no preferences injected)
+  │     │
+  │     └─► Summarize completed same-label
+  │         tickets, cite keys
+  │
+  └─► Inject tech lead's Google Doc
+      preferences for resolved category
+      ──► opinionated recommendation
+          with tradeoffs
+```
+
 ### 4. PR Auto-Description — GitHub Webhook
 
 When a pull request is opened, reopened, or updated against `main`, LeadSync auto-generates a rich PR description:
@@ -123,6 +264,50 @@ The enrichment block is idempotent (HTML comment markers) — re-pushing updates
 
 A sample FastAPI project lives in `demo/fastapi_backend/` specifically for demonstrating this workflow — create a feature branch, make changes there, open a PR to `main`, and watch the description populate itself.
 
+**WF4 Internal Flow:**
+
+```
+POST /webhooks/github
+        │
+  parse_pr_context(payload)
+  Extract: action, owner, repo, number, SHAs, title, body, branch
+  Detect Jira key: branch → title → body (regex)
+        │
+  Action filter: {opened, reopened, synchronize, ready_for_review}
+  ├─ Other action → skip
+  └─ Allowed      → continue
+        │
+  list_pr_files() — 4-strategy fallback chain:
+  ├─ 1. PR Files endpoint
+  ├─ 2. Compare commits (base...head)
+  ├─ 3. Per-commit listing + dedup
+  └─ 4. HTTP .diff fetch + unified diff parse
+  (each silently falls through on failure)
+        │
+  ┌─────┴─────┐
+  ▼            ▼
+Files found   No files
+  │            └─► skip AI, deterministic only
+  │
+  [Try] AI crew (1 agent: PR Description Writer)
+  ├─ Build diff context (≤16K chars)
+  ├─ Generate JSON: summary, impl details, validation
+  ├─ Success → use AI sections
+  └─ Exception → fallback to deterministic
+        │
+  render_full_pr_details()
+  ├─ Summary:    AI summary OR cleaned PR title
+  ├─ Impl:       AI details OR regex diff signals
+  │              (routes, functions, validation, query controls)
+  ├─ Validation: AI hints OR category-based defaults
+  ├─ Files:      grouped by area (Backend/Frontend/DB/Testing/Docs)
+  └─ Wrap in <!-- leadsync:pr-details --> markers
+        │
+  upsert_pr_body()
+  ├─ Markers exist? → replace block in-place (idempotent)
+  └─ No markers?    → append after existing body
+```
+
 ### 5. Jira PR Auto-Link — GitHub Webhook
 
 Runs automatically alongside WF4 on every PR opened or reopened against `main`. No extra configuration needed.
@@ -134,6 +319,36 @@ Runs automatically alongside WF4 on every PR opened or reopened against `main`. 
 
 This closes the loop between GitHub and Jira without any developer action.
 
+**WF5 Internal Flow:**
+
+```
+POST /webhooks/github (runs alongside WF4, non-blocking)
+        │
+  Action filter: {opened, reopened} only
+  ├─ Other action → skip
+  └─ Allowed      → continue
+        │
+  Detect Jira key: branch → title → body (regex)
+        │
+  ┌─────┴──────┐
+  ▼             ▼
+Key found     No key
+  │             └─► post_github_no_ticket_warning()
+  │                 "No Jira ticket detected. Please
+  │                  add LEADS-XXX to the PR title."
+  │
+  ├─ post_jira_pr_link_comment()
+  │  ├─ Idempotency: PR URL already in ticket? → skip
+  │  └─ Post comment with PR#, URL, branch, SHA
+  │
+  └─ transition_jira_to_in_review()
+     ├─ Fetch available transitions
+     ├─ Find "In Review" (case-insensitive)
+     │  ├─ Found    → execute transition
+     │  └─ Missing  → skip (log warning)
+     └─ Done
+```
+
 ### 6. Done Ticket Implementation Scan — Jira Webhook
 
 Triggers when a Jira ticket is transitioned to **Done** status. Two agents pick up the work:
@@ -143,6 +358,47 @@ Triggers when a Jira ticket is transitioned to **Done** status. Two agents pick 
 - **Posts the summary as a Jira comment** on the completed ticket — a permanent, searchable record of what was built and where
 
 This gives the team an automatic retrospective artifact for every shipped ticket, useful for onboarding, audits, and future context retrieval.
+
+**WF6 Internal Flow:**
+
+```
+POST /webhooks/jira (routed when status → Done)
+  OR
+POST /webhooks/jira/done (direct, wraps raw payload)
+        │
+  parse_issue_context(payload)
+  Extract: key, summary, description, labels, project
+        │
+  build_done_scan_crew()
+        │
+  ┌─ Implementation Scanner (Agent 1) ───────┐
+  │  PHASE 1: Search last 24h on main         │
+  │  • Commits with issue key in message       │
+  │  • Merged PRs matching key or keywords     │
+  │  • Extract files changed per match         │
+  │  Found? → output COMMIT:/PR: lines         │
+  │                                            │
+  │  PHASE 2: File-based fallback              │
+  │  (only if Phase 1 found nothing)           │
+  │  • Browse repo tree for related files      │
+  │  • Read up to 5 candidates                 │
+  │  • Output REPO_FILE: lines                 │
+  │                                            │
+  │  Neither? → "NO_MATCHES_FOUND"             │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  ┌─ Implementation Summarizer (Agent 2) ─────┐
+  │  • Distill findings into:                  │
+  │    IMPLEMENTATION_SUMMARY: 2-3 sentences   │
+  │    FILES_CHANGED: file1, file2, ...        │
+  │  • No matches → "No matching commits..."   │
+  └──────────────┬────────────────────────────-┘
+                 ▼
+  post_done_scan_comment()
+  ├─ Idempotency: "Implementation Scan Complete"
+  │  marker already in ticket? → skip
+  └─ Post formatted Jira comment
+```
 
 ---
 

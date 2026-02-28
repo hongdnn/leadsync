@@ -582,6 +582,7 @@ body::before{
     else if (t === 'workflow_error') onWorkflowError(ev);
     else if (t === 'chunk')          onChunk(ev);
     else if (t === 'tool_call')      onToolCall(ev);
+    else if (t === 'task_complete')  onTaskComplete(ev);
     scrollToBottom();
   }
 
@@ -643,6 +644,18 @@ body::before{
     if (ev.agent_role) html += '<span style="color:var(--text-dim)">[' + esc(ev.agent_role) + ']</span> ';
     html += esc(ev.content || '');
     el.innerHTML = html;
+    panel.appendChild(el);
+  }
+
+  function onTaskComplete(ev){
+    ensureEntries();
+    const el = document.createElement('div');
+    el.className = 'entry entry-banner end';
+    el.style.cssText = 'font-size:0.68rem;opacity:0.85;margin:4px 0;';
+    let label = '\u2714 Task done';
+    if (ev.agent_role) label += ' [' + esc(ev.agent_role) + ']';
+    if (ev.task_name)  label += ': ' + esc(ev.task_name);
+    el.innerHTML = label + '<span class="ts">' + fmtTime(ev.timestamp) + '</span>';
     panel.appendChild(el);
   }
 

@@ -117,25 +117,74 @@ async def test_broadcast_event_removes_dead_connections():
     assert ws_alive in mgr._connections
 
 
-def test_drain_streaming_output_passthrough_for_plain_result():
-    """_drain_streaming_output passes through non-streaming results unchanged."""
-    from src.common.model_retry import _drain_streaming_output
-    result = MagicMock(spec=[])
-    assert _drain_streaming_output(result, "test") is result
+def test_make_crew_callbacks_returns_callbacks_when_enabled():
+    """make_crew_callbacks returns step_callback and task_callback when enabled."""
+    from src.stream import make_crew_callbacks
+    with patch.dict(os.environ, {"LEADSYNC_STREAM_ENABLED": "true"}):
+        cbs = make_crew_callbacks("WF1-Enrichment")
+    assert "step_callback" in cbs
+    assert "task_callback" in cbs
+    assert callable(cbs["step_callback"])
+    assert callable(cbs["task_callback"])
 
 
-def test_drain_streaming_output_handles_import_error(monkeypatch):
-    """_drain_streaming_output returns result when crewai.types.streaming is missing."""
-    import importlib
-    import src.common.model_retry as mod
+def test_make_crew_callbacks_returns_empty_when_disabled():
+    """make_crew_callbacks returns empty dict when streaming is disabled."""
+    from src.stream import make_crew_callbacks
+    with patch.dict(os.environ, {"LEADSYNC_STREAM_ENABLED": "false"}):
+        cbs = make_crew_callbacks("WF1-Enrichment")
+    assert cbs == {}
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
 
-    def mock_import(name, *args, **kwargs):
-        if name == "crewai.types.streaming":
-            raise ImportError("no module")
-        return original_import(name, *args, **kwargs)
+def test_step_callback_broadcasts_chunk():
+    """Step callback broadcasts a chunk event via manager."""
+    from src.stream import make_crew_callbacks, manager
+    with patch.dict(os.environ, {"LEADSYNC_STREAM_ENABLED": "true"}), \
+         patch.object(manager, "broadcast_sync") as mock_bc:
+        cbs = make_crew_callbacks("WF1-Test")
+        step_output = MagicMock()
+        step_output.agent = "Context Gatherer"
+        step_output.tool = ""
+        step_output.log = "Thinking about the task..."
+        cbs["step_callback"](step_output)
+        mock_bc.assert_called_once()
+        event = mock_bc.call_args[0][0]
+        assert event["type"] == "chunk"
+        assert event["workflow"] == "WF1-Test"
+        assert event["agent_role"] == "Context Gatherer"
+        assert "Thinking" in event["content"]
 
-    monkeypatch.setattr("builtins.__import__", mock_import)
-    result = MagicMock(spec=[])
-    assert mod._drain_streaming_output(result, "test") is result
+
+def test_step_callback_broadcasts_tool_call():
+    """Step callback broadcasts a tool_call event when tool is present."""
+    from src.stream import make_crew_callbacks, manager
+    with patch.dict(os.environ, {"LEADSYNC_STREAM_ENABLED": "true"}), \
+         patch.object(manager, "broadcast_sync") as mock_bc:
+        cbs = make_crew_callbacks("WF6-Test")
+        step_output = MagicMock()
+        step_output.agent = "Scanner"
+        step_output.tool = "GITHUB_LIST_COMMITS"
+        step_output.log = "Calling GitHub API"
+        cbs["step_callback"](step_output)
+        event = mock_bc.call_args[0][0]
+        assert event["type"] == "tool_call"
+        assert event["tool_name"] == "GITHUB_LIST_COMMITS"
+
+
+def test_task_callback_broadcasts_task_complete():
+    """Task callback broadcasts a task_complete event."""
+    from src.stream import make_crew_callbacks, manager
+    with patch.dict(os.environ, {"LEADSYNC_STREAM_ENABLED": "true"}), \
+         patch.object(manager, "broadcast_sync") as mock_bc:
+        cbs = make_crew_callbacks("WF2-Test")
+        task_output = MagicMock()
+        task_output.agent = "Digest Writer"
+        task_output.summary = "Wrote the digest summary"
+        task_output.raw = ""
+        task_output.description = "Draft a detailed digest"
+        cbs["task_callback"](task_output)
+        event = mock_bc.call_args[0][0]
+        assert event["type"] == "task_complete"
+        assert event["workflow"] == "WF2-Test"
+        assert event["agent_role"] == "Digest Writer"
+        assert "digest summary" in event["content"]

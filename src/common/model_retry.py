@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from src.stream import make_event, manager
 
 EMPTY_LLM_RESPONSE_MESSAGE = "Invalid response from LLM call - None or empty."
 
@@ -35,42 +34,6 @@ def _fallback_model_for_error(model: str, exc: Exception) -> str | None:
     return None
 
 
-def _drain_streaming_output(result: Any, label: str) -> Any:
-    """Drain streaming chunks from a CrewStreamingOutput, broadcasting each.
-
-    If *result* is a normal CrewOutput (non-streaming), it passes through unchanged.
-
-    Args:
-        result: Return value of crew.kickoff() — may be streaming or plain.
-        label: Workflow label for event metadata.
-    Returns:
-        The final CrewOutput object.
-    """
-    try:
-        from crewai.types.streaming import CrewStreamingOutput
-    except ImportError:
-        return result
-
-    if not isinstance(result, CrewStreamingOutput):
-        return result
-
-    for chunk in result:
-        chunk_type = getattr(chunk, "type", "TEXT")
-        type_str = str(chunk_type).split(".")[-1].lower()
-        event_type = "tool_call" if type_str == "tool_call" else "chunk"
-        manager.broadcast_sync(make_event(
-            event_type,
-            label,
-            agent_role=getattr(chunk, "agent_role", "") or "",
-            task_name=getattr(chunk, "task_name", "") or "",
-            content=getattr(chunk, "content", "") or str(chunk),
-            chunk_type=type_str,
-            tool_name=getattr(chunk, "tool_name", "") or "",
-        ))
-
-    return getattr(result, "result", result)
-
-
 def kickoff_with_model_fallback(
     *,
     crew: Any,
@@ -92,7 +55,7 @@ def kickoff_with_model_fallback(
         Tuple of (kickoff_result, used_model_name).
     """
     try:
-        return _drain_streaming_output(crew.kickoff(), label), model
+        return crew.kickoff(), model
     except Exception as exc:
         logger.exception("%s crew kickoff failed for model '%s'.", label, model)
         effective_exc = exc
@@ -105,7 +68,7 @@ def kickoff_with_model_fallback(
                 model,
             )
             try:
-                return _drain_streaming_output(crew.kickoff(), label), model
+                return crew.kickoff(), model
             except Exception as retry_exc:
                 logger.exception(
                     "%s crew retry still failed for model '%s'.", label, model
@@ -119,5 +82,5 @@ def kickoff_with_model_fallback(
             )
             for agent in agents:
                 agent.llm = fallback_model
-            return _drain_streaming_output(crew.kickoff(), label), fallback_model
+            return crew.kickoff(), fallback_model
         raise effective_exc

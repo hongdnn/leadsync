@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from src.stream import stream_enabled
+from src.stream import make_crew_callbacks
 
 
 def build_workflow3_crew(
@@ -152,6 +152,6 @@ def build_workflow3_crew(
         tasks=[retrieve_task, reason_task, respond_task],
         process=runtime.Process.sequential,
         verbose=True,
-        stream=stream_enabled(),
+        **make_crew_callbacks("WF3-SlackQA"),
     )
     return retrieve_task, reason_task, respond_task, [retriever, reasoner, responder], crew

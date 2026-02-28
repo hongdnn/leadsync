@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from src.common.model_retry import kickoff_with_model_fallback
 from src.shared import CrewRunResult
-from src.stream import stream_enabled
+from src.stream import make_crew_callbacks
 from src.workflow2.ops import maybe_acquire_digest_lock, persist_digest_memory
 
 
@@ -199,7 +199,7 @@ def run_workflow2(
         tasks=[scan_task, write_task, post_task],
         process=runtime.Process.sequential,
         verbose=True,
-        stream=stream_enabled(),
+        **make_crew_callbacks("WF2-Digest"),
     )
     result, used_model = kickoff_with_model_fallback(
         crew=crew,
