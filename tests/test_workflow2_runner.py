@@ -43,6 +43,32 @@ def test_run_workflow2_uses_window_minutes_in_scan_prompt(mock_kickoff):
 
     scan_task_description = runtime.Task.call_args_list[0].kwargs["description"]
     assert "last 60 minutes" in scan_task_description
+    assert "NO_MEANINGFUL_COMMITS" in scan_task_description
+
+
+@patch("src.workflow2.runner.kickoff_with_model_fallback")
+def test_run_workflow2_write_prompt_includes_no_commit_heartbeat_line(mock_kickoff):
+    from src.workflow2.runner import run_workflow2
+
+    runtime = _build_runtime(acquire_lock=True)
+    mock_kickoff.return_value = ("ok", "gemini/gemini-2.5-flash")
+    logger = logging.getLogger("test-workflow2")
+
+    run_workflow2(
+        model="gemini/gemini-2.5-flash",
+        slack_channel_id="C123",
+        github_tools=[],
+        slack_tools=[],
+        runtime=runtime,
+        logger=logger,
+        window_minutes=60,
+        run_source="manual",
+        bucket_start_utc=None,
+        idempotency_enabled=True,
+    )
+
+    write_task_description = runtime.Task.call_args_list[1].kwargs["description"]
+    assert "No meaningful commits in last 60 minutes." in write_task_description
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")

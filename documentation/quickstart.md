@@ -93,15 +93,29 @@ curl -X POST http://127.0.0.1:8000/slack/commands \
 
 ## 5. Railway Hourly Scheduler (Hackathon)
 
-1. Deploy the API service normally (the one running `uvicorn src.main:app`).
-2. Set `LEADSYNC_TRIGGER_TOKEN` in the API service env vars.
-3. Create a Railway Cron service from the same repo.
-4. In the Cron service, set:
+1. Create a dedicated Slack channel for digest output (example: `#leadsync-hourly-digest`).
+2. Invite your LeadSync Slack bot/app to that channel.
+3. Copy the channel ID (`C...`) and set it as `SLACK_CHANNEL_ID` in the API service.
+4. Deploy the API service normally (the one running `uvicorn src.main:app`).
+5. Set `LEADSYNC_TRIGGER_TOKEN` in the API service env vars.
+6. Create a Railway Cron service from the same repo.
+7. In the Cron service, set:
    - `DIGEST_TRIGGER_URL=https://<your-api-domain>/digest/trigger`
    - `LEADSYNC_TRIGGER_TOKEN=<same-shared-secret>`
-5. Set schedule expression to hourly UTC (recommended offset): `7 * * * *`.
-6. Cron command example:
+8. Set schedule expression to hourly UTC (recommended offset): `7 * * * *`.
+9. Cron command example:
 
 ```bash
 python -c "import json, os, urllib.request; req=urllib.request.Request(os.environ['DIGEST_TRIGGER_URL'], data=json.dumps({'run_source':'scheduled','window_minutes':60}).encode('utf-8'), headers={'Content-Type':'application/json','X-LeadSync-Trigger-Token':os.environ['LEADSYNC_TRIGGER_TOKEN']}, method='POST'); print(urllib.request.urlopen(req, timeout=60).read().decode())"
 ```
+
+10. Trigger once manually for verification:
+
+```bash
+curl -X POST https://<your-api-domain>/digest/trigger \
+  -H "Content-Type: application/json" \
+  -H "X-LeadSync-Trigger-Token: <same-shared-secret>" \
+  -d '{"run_source":"manual","window_minutes":60}'
+```
+
+Expected: one message appears in the dedicated Slack channel each run, including quiet hours (no meaningful commits).

@@ -14,6 +14,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def clear_digest_trigger_token(monkeypatch):
+    """Keep endpoint tests deterministic regardless of developer shell env vars."""
+    monkeypatch.delenv("LEADSYNC_TRIGGER_TOKEN", raising=False)
+
+
 def test_health_check(client):
     response = client.get("/health")
     assert response.status_code == 200

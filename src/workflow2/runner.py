@@ -82,7 +82,8 @@ def run_workflow2(
             "Use GITHUB tools to scan main-branch changes "
             f"from the last {window_minutes} minutes.\n"
             "- Include author, commit summary, impacted area, and risk flags.\n"
-            "- Exclude noise-only commits when possible."
+            "- Exclude noise-only commits when possible.\n"
+            "- If no meaningful commits are found, return 'NO_MEANINGFUL_COMMITS'."
         ),
         expected_output="Structured list of meaningful commits grouped by area.",
         agent=scanner,
@@ -94,7 +95,9 @@ def run_workflow2(
             "- Mention key risks and follow-ups.\n"
             "- Keep under 12 lines.\n"
             "- Output lines in this exact format:\n"
-            "  AREA: <name> | SUMMARY: <text> | RISKS: <text>"
+            "  AREA: <name> | SUMMARY: <text> | RISKS: <text>\n"
+            "- If scanner output is 'NO_MEANINGFUL_COMMITS', output exactly one line:\n"
+            f"  AREA: general | SUMMARY: No meaningful commits in last {window_minutes} minutes. | RISKS: None."
         ),
         expected_output="A polished plain-text daily digest message.",
         agent=writer,

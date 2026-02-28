@@ -23,6 +23,7 @@ Use this file as the live execution board.
 - [x] Decision recorded: Tech lead preferences now use Google Docs as the only source of truth. Workflow 1 and Workflow 3 fetch category-specific docs (`frontend`/`backend`/`database`) via Composio GOOGLEDOCS tools on every run; `/slack/prefs` is deprecated.
 - [x] Decision recorded: Agent-scannability cleanup refactor approved. Workflow logic was split into focused subpackages (`src/workflow1`, `src/workflow2`, `src/workflow3`) plus shared internals (`src/common`, `src/memory`) while preserving legacy module entrypoints for compatibility.
 - [x] Decision recorded: Workflow 2 scheduling uses Railway Cron + secured `POST /digest/trigger` (`X-LeadSync-Trigger-Token`) with 60-minute default lookback and SQLite idempotency lock keys to avoid duplicate hourly Slack posts.
+- [x] Decision recorded: Workflow 2 now emits a guaranteed hourly heartbeat digest line when no meaningful commits are detected, so demo Slack activity remains visible every scheduled run.
 
 ---
 
@@ -211,6 +212,7 @@ Use this file as the live execution board.
 
 | Date | Owner | Update |
 |------|-------|--------|
+| 2026-02-28 | Dev 1 + Dev 2 | Finalized demo-hourly digest behavior: Workflow 2 prompt contract now forces explicit no-commit heartbeat output (`AREA: general | SUMMARY: No meaningful commits ...`), quickstart now includes dedicated Slack channel setup/invite flow + manual verification call, and tests were expanded for quiet-hour behavior. |
 | 2026-02-28 | Dev 2 | Finalized agent-scannability refactor after concurrent edits: resolved duplicate helper collisions in `shared.py` and `src/memory/write.py`, preserved Workflow 2 schedule/idempotency interfaces, kept compatibility facades on legacy module paths, and revalidated suite (`pytest -q`: 94 passing, coverage: 92%). |
 | 2026-02-28 | Dev 1 + Dev 2 | Implemented Workflow 2 scheduled digest readiness: added secure trigger support for `POST /digest/trigger` with optional shared token header, configurable digest window (`LEADSYNC_DIGEST_WINDOW_MINUTES`), run metadata (`run_source`, `bucket_start_utc`), SQLite idempotency locks (`idempotency_locks`) to suppress duplicate scheduled buckets, and updated tests/docs (`pytest -q`: 94 passing). |
 | 2026-02-28 | Dev 2 | Implemented agent-scannability cleanup refactor: split oversized workflow files into dedicated subpackages, centralized shared helpers (task-output extraction, model fallback retry, token/tool lookup), split memory internals into `src/memory/*` with `src/memory_store.py` facade, split Jira history/prefs into core + facade modules, and moved FastAPI startup initialization to lifespan; tests remain green (81 passing, 92% coverage). |
