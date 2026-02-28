@@ -118,6 +118,27 @@ Use this file as the live execution board.
 
 ---
 
+## Phase 3b — Workflow 4 (PR Auto-Description)
+
+### Dev 2 (Crew)
+- [x] `src/pr_review_crew.py` runs PR description writer agent with `verbose=True`.
+- [x] Webhook payload parsing extracts PR metadata + Jira key from branch/title/body.
+- [x] Changed files fetched via Composio GitHub tools with multi-fallback strategy (PR files → commit compare → individual commits → raw `.diff`).
+- [x] AI-generated sections: summary, implementation details, suggested validation.
+- [x] Deterministic fallback when AI generation fails (diff signal extraction for routes, functions, tests, query patterns).
+- [x] Enrichment block is idempotent (HTML comment markers, upsert on re-run).
+- [x] Manual PR description content preserved above/below enrichment block.
+
+### Dev 1 (Endpoint + E2E)
+- [x] `POST /webhooks/github` endpoint works from real GitHub webhook payload.
+- [x] Endpoint returns `{"status":"processed","model":...,"result":...}` on success.
+- [x] Unsupported actions (e.g., `closed`) are skipped gracefully.
+- [x] Missing PR metadata returns `HTTP 400`.
+- [x] Crew failure returns `HTTP 500`.
+- [ ] Golden payload test confirms PR description is enriched on GitHub.
+
+---
+
 ## Phase 4 — Testing + Quality Gate
 
 ### Dev 2 (Primary Owner)
@@ -142,6 +163,7 @@ Use this file as the live execution board.
 ### Dev 1 (Primary Owner)
 - [ ] ngrok tunnel running and stable for local demo.
 - [ ] Jira webhook points to `<public-url>/webhooks/jira`.
+- [ ] GitHub webhook points to `<public-url>/webhooks/github` (PR events: opened, reopened, synchronize, ready_for_review).
 - [ ] Slack slash command `/leadsync` points to `<public-url>/slack/commands`.
 - [ ] Slack app/bot has required scopes and channel access.
 - [ ] Railway deploy configured with all required env vars.
@@ -152,6 +174,7 @@ Use this file as the live execution board.
 - [ ] Workflow 1 demo: new Jira ticket -> enriched ticket + prompt attachment.
 - [ ] Workflow 2 demo: digest trigger -> Slack summary posted.
 - [ ] Workflow 3 demo: `/leadsync` question -> reasoned Slack answer posted.
+- [ ] Workflow 4 demo: open PR -> description auto-populated with summary + implementation details.
 - [ ] Logs are readable and useful during all demo beats.
 
 ---
@@ -202,11 +225,21 @@ Use this file as the live execution board.
 
 ---
 
+## Phase 8 — Workflow 5 (Jira-GitHub PR Auto-Link)
+
+### Dev 1 (API & Integration)
+- [ ] `src/workflow5/` package with `__init__.py`, `runner.py`, `ops.py`
+- [ ] `src/jira_link_crew.py` public wrapper
+- [ ] `src/main.py` fan-out: WF5 runs alongside WF4 in `github_webhook`, non-blocking
+- [ ] `tests/test_jira_link_crew.py` — full unit coverage for runner, ops, wrapper, and endpoint layers
+
+---
+
 ## Checkpoint Summary (Mark When Fully Verified)
 
 - [ ] Checkpoint A: Local environment + base integrations verified.
 - [ ] Checkpoint B: Workflow 1 production-like behavior verified.
-- [ ] Checkpoint C: All 3 workflows execute without exceptions.
+- [ ] Checkpoint C: All 4 workflows execute without exceptions.
 - [x] Checkpoint D: Tests green with target coverage. (111 tests passing, 92% coverage)
 - [ ] Checkpoint E: Live deploy + external integrations verified.
 - [ ] Checkpoint F: Demo rehearsal complete and stable.

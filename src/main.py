@@ -14,6 +14,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
+from src.jira_link_crew import run_jira_link_crew
 from src.leadsync_crew import run_leadsync_crew
 from src.memory_store import init_memory_db, record_memory_item
 from src.pr_review_crew import run_pr_review_crew
@@ -75,23 +76,37 @@ def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
 @app.post("/webhooks/github")
 def github_webhook(payload: dict[str, Any]) -> dict[str, str]:
     """
-    Trigger Workflow 4: GitHub PR gating to Jira In Review.
+    Trigger Workflow 4 (PR auto-description) and Workflow 5 (Jira PR auto-link).
+    WF5 runs non-blocking — its failure does not affect WF4's response.
 
     Args:
         payload: GitHub webhook JSON body.
     Returns:
-        Status + workflow result.
+        Status + workflow results for WF4 and WF5.
     Raises:
         HTTPException 400: Missing env vars or malformed payload.
-        HTTPException 500: Workflow failure.
+        HTTPException 500: Workflow 4 failure.
     """
     try:
-        result = run_pr_review_crew(payload=payload)
+        result4 = run_pr_review_crew(payload=payload)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Workflow 4 failed: {exc}") from exc
-    return {"status": "processed", "model": result.model, "result": result.raw}
+
+    wf5_raw = "skipped:wf5-error"
+    try:
+        result5 = run_jira_link_crew(payload=payload)
+        wf5_raw = result5.raw
+    except Exception:
+        logger.exception("Workflow 5 failed (non-blocking).")
+
+    return {
+        "status": "processed",
+        "model": result4.model,
+        "result": result4.raw,
+        "wf5_result": wf5_raw,
+    }
 
 
 @app.post("/digest/trigger")

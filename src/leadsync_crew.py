@@ -10,7 +10,6 @@ from typing import Any
 
 from crewai import Agent, Crew, Process, Task
 
-from src.config import Config
 from src.common.task_output import extract_task_output as _extract_task_output
 from src.common.text_extract import extract_text as _extract_text
 from src.common.token_matching import normalize_tokens as _normalize_tokens
@@ -22,7 +21,16 @@ from src.common.tool_helpers import (
 from src.jira_history import build_same_label_progress_context, extract_primary_label
 from src.memory_store import record_event, record_memory_item
 from src.prefs import load_preferences_for_category, resolve_preference_category
-from src.shared import CrewRunResult, build_memory_db_path, build_tools, memory_enabled
+from src.shared import (
+    CrewRunResult,
+    _required_env,
+    _required_gemini_api_key,
+    build_llm,
+    build_memory_db_path,
+    build_tools,
+    composio_user_id,
+    memory_enabled,
+)
 from src.tools.jira_tools import get_agent_tools
 from src.workflow1.prompt_artifact import (
     REQUIRED_SECTIONS,
@@ -78,14 +86,15 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     Returns:
         CrewRunResult containing raw crew output and effective model name.
     """
-    Config.require_gemini_api_key()
-    model = Config.get_gemini_model()
+    _required_gemini_api_key()
+    model = build_llm()
     jira_tools = get_agent_tools()
-    github_tools = build_tools(user_id=Config.get_composio_user_id(), toolkits=["GITHUB"])
+    user_id = composio_user_id()
+    github_tools = build_tools(user_id=user_id, toolkits=["GITHUB"])
     tools = _merge_tools(jira_tools, github_tools)
-    docs_tools = build_tools(user_id=Config.get_composio_user_id(), toolkits=["GOOGLEDOCS"])
-    repo_owner = Config.require_env("LEADSYNC_GITHUB_REPO_OWNER")
-    repo_name = Config.require_env("LEADSYNC_GITHUB_REPO_NAME")
+    docs_tools = build_tools(user_id=user_id, toolkits=["GOOGLEDOCS"])
+    repo_owner = _required_env("LEADSYNC_GITHUB_REPO_OWNER")
+    repo_name = _required_env("LEADSYNC_GITHUB_REPO_NAME")
     runtime = Workflow1Runtime(
         Agent=Agent,
         Task=Task,

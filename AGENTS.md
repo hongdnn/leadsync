@@ -33,7 +33,8 @@ leadsync/
 │   ├── memory_store.py      # Shared: SQLite memory read/write/query helpers
 │   ├── leadsync_crew.py     # Workflow 1: Ticket Enrichment
 │   ├── digest_crew.py       # Workflow 2: End-of-Day Digest
-│   └── slack_crew.py        # Workflow 3: Slack Q&A
+│   ├── slack_crew.py        # Workflow 3: Slack Q&A
+│   └── pr_review_crew.py    # Workflow 4: PR Auto-Description
 ├── templates/
 │   ├── backend-ruleset.md
 │   ├── frontend-ruleset.md
@@ -52,15 +53,16 @@ Never create files outside this structure without a strong reason.
 
 ---
 
-## 3. Three Workflows — Keep Them Separate
+## 3. Four Workflows — Keep Them Separate
 
 | Workflow | Trigger | Agents | Output |
 |----------|---------|--------|--------|
 | 1 — Ticket Enrichment | `POST /webhooks/jira` | Context Gatherer → Intent Reasoner → Propagator | `prompt-[ticket-key].md` attached to Jira + enriched description + comment |
 | 2 — End-of-Day Digest | `POST /digest/trigger` | GitHub Scanner → Digest Writer → Slack Poster | One Slack message with grouped commit summary |
 | 3 — Slack Q&A | `POST /slack/commands` | Context Retriever → Tech Lead Reasoner → Slack Responder | Threaded Slack reply with reasoned answer |
+| 4 — PR Auto-Description | `POST /webhooks/github` | PR Description Writer (1 agent + rule engine) | Enriched PR description on GitHub with summary, implementation details, files changed, and validation steps |
 
-**Never conflate these into one crew. Three separate files, three separate crews.**
+**Never conflate these into one crew. Four separate files, four separate crews.**
 
 Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Task + Context + Constraints + Implementation Rules + Expected Output in a single paste-ready document.
 
@@ -154,7 +156,7 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 ## 9. What's Cut — Do Not Re-Add
 
 - ❌ Two output files per ticket — one `prompt-[ticket-key].md` only
-- ❌ PR webhooks — main branch commits only
+- ❌ PR review/approval automation — WF4 enriches descriptions only, does not approve or merge
 - ❌ Any UI or dashboard
 - ❌ External managed database (keep hackathon scope to local SQLite memory only)
 - ❌ Cron/schedulers — digest is a manual HTTP trigger

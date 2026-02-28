@@ -42,8 +42,10 @@ def reason_description(
     preference_category: str,
     team_preferences: str,
     common_context: str,
+    general_rules: str = "",
 ) -> str:
     """Build reasoner task prompt text."""
+    rules_suffix = f"\n8) Additional general rules:\n{general_rules}\n" if general_rules else ""
     return (
         "From gathered context, generate:\n"
         "1) One markdown document with these exact sections in order:\n"
@@ -64,6 +66,7 @@ def reason_description(
         "6) Add implementation output checklist (code/tests/docs)\n"
         "7) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
         f"{common_context}"
+        f"{rules_suffix}"
     )
 
 

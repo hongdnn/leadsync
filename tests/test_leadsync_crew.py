@@ -36,9 +36,9 @@ def _github_tool() -> MagicMock:
     return tool
 
 
-def _configure_repo_env(mock_config: MagicMock) -> None:
-    """Set deterministic repo-target env lookups through Config facade mock."""
-    mock_config.require_env.side_effect = lambda name: {
+def _configure_repo_env(mock_required_env: MagicMock) -> None:
+    """Set deterministic repo-target env lookups through _required_env mock."""
+    mock_required_env.side_effect = lambda name: {
         "LEADSYNC_GITHUB_REPO_OWNER": "octocat",
         "LEADSYNC_GITHUB_REPO_NAME": "hello-world",
     }[name]
@@ -67,7 +67,10 @@ def _configure_task_outputs(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
 @patch("src.leadsync_crew._write_prompt_file")
@@ -75,16 +78,17 @@ def test_run_leadsync_crew_returns_crew_run_result(
     mock_write_prompt,
     mock_attach_prompt,
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
@@ -111,7 +115,10 @@ def test_run_leadsync_crew_returns_crew_run_result(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash-latest")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
 @patch("src.leadsync_crew._write_prompt_file")
@@ -119,16 +126,17 @@ def test_run_leadsync_crew_model_fallback(
     mock_write_prompt,
     mock_attach_prompt,
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash-latest"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
@@ -155,7 +163,10 @@ def test_run_leadsync_crew_model_fallback(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
 @patch("src.leadsync_crew._write_prompt_file")
@@ -163,16 +174,17 @@ def test_run_leadsync_crew_uses_frontend_label(
     mock_write_prompt,
     mock_attach_prompt,
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
@@ -207,7 +219,10 @@ def test_run_leadsync_crew_uses_frontend_label(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
 @patch("src.leadsync_crew._write_prompt_file")
@@ -215,16 +230,17 @@ def test_run_leadsync_crew_empty_payload_defaults(
     mock_write_prompt,
     mock_attach_prompt,
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
@@ -249,20 +265,24 @@ def test_run_leadsync_crew_empty_payload_defaults(
     "src.leadsync_crew.load_preferences_for_category",
     side_effect=RuntimeError("Failed to fetch Google Docs preferences"),
 )
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_raises_when_google_doc_fetch_fails(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     mock_get_tools.return_value = []
 
@@ -276,20 +296,24 @@ def test_run_leadsync_crew_raises_when_google_doc_fetch_fails(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_raises_when_github_tools_missing(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_get_tools.return_value = []
     _configure_task_outputs(mock_task_cls)
 
@@ -303,20 +327,23 @@ def test_run_leadsync_crew_raises_when_github_tools_missing(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env", side_effect=RuntimeError("Missing required env var: LEADSYNC_GITHUB_REPO_OWNER"))
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_raises_when_repo_target_missing(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    mock_config.require_env.side_effect = RuntimeError("Missing required env var: LEADSYNC_GITHUB_REPO_OWNER")
     mock_build_tools.return_value = [_github_tool()]
     mock_get_tools.return_value = []
     _configure_task_outputs(mock_task_cls)
@@ -331,11 +358,17 @@ def test_run_leadsync_crew_raises_when_repo_target_missing(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
@@ -343,9 +376,7 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
     mock_task_cls,
     tmp_path,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     attachment_tool = _attachment_tool()
     mock_get_tools.return_value = [attachment_tool, _github_tool()]
@@ -397,11 +428,17 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_missing_attachment_tool_raises(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
@@ -409,9 +446,7 @@ def test_run_leadsync_crew_missing_attachment_tool_raises(
     mock_task_cls,
     tmp_path,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
@@ -430,11 +465,17 @@ def test_run_leadsync_crew_missing_attachment_tool_raises(
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_attachment_tool_failure_raises(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
@@ -442,9 +483,7 @@ def test_run_leadsync_crew_attachment_tool_failure_raises(
     mock_task_cls,
     tmp_path,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     _configure_task_outputs(mock_task_cls)
     attachment_tool = _attachment_tool()
@@ -493,11 +532,17 @@ def test_select_ruleset_file_defaults_to_backend():
 @patch("src.leadsync_crew.get_agent_tools")
 @patch("src.leadsync_crew.build_tools", return_value=[])
 @patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
-@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew._required_env")
+@patch("src.leadsync_crew.composio_user_id", return_value="default")
+@patch("src.leadsync_crew._required_gemini_api_key", return_value="fake-key")
+@patch("src.leadsync_crew.build_llm", return_value="gemini/gemini-2.5-flash")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_records_memory_when_enabled(
     mock_crew_cls,
-    mock_config,
+    mock_build_llm,
+    mock_gemini_key,
+    mock_cuid,
+    mock_required_env,
     mock_load_prefs,
     mock_build_tools,
     mock_get_tools,
@@ -505,9 +550,7 @@ def test_run_leadsync_crew_records_memory_when_enabled(
     mock_task_cls,
     tmp_path,
 ):
-    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
-    mock_config.require_gemini_api_key.return_value = "fake-key"
-    _configure_repo_env(mock_config)
+    _configure_repo_env(mock_required_env)
     mock_build_tools.return_value = [_github_tool()]
     attachment_tool = _attachment_tool()
     mock_get_tools.return_value = [attachment_tool, _github_tool()]

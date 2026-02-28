@@ -29,10 +29,22 @@
 leadsync/
 ├── src/
 │   ├── main.py              # FastAPI app + all endpoints
-│   ├── shared.py            # Shared: LLM factory, env helpers, Composio client
-│   ├── leadsync_crew.py     # Workflow 1: Ticket Enrichment
-│   ├── digest_crew.py       # Workflow 2: End-of-Day Digest
-│   └── slack_crew.py        # Workflow 3: Slack Q&A
+│   ├── shared.py            # LLM factory, env helpers, Composio client
+│   ├── leadsync_crew.py     # Workflow 1 wrapper
+│   ├── digest_crew.py       # Workflow 2 wrapper
+│   ├── slack_crew.py        # Workflow 3 wrapper
+│   ├── pr_review_crew.py    # Workflow 4 wrapper
+│   ├── memory_store.py      # SQLite memory facade
+│   ├── jira_history.py      # Same-label ticket context facade
+│   ├── prefs.py             # Google Docs preference loading facade
+│   ├── workflow1/           # Ticket Enrichment internals
+│   ├── workflow2/           # End-of-Day Digest internals
+│   ├── workflow3/           # Slack Q&A internals
+│   ├── workflow4/           # PR Auto-Description internals
+│   ├── common/              # Model retry, tool helpers, text extraction
+│   ├── memory/              # SQLite schema, read/write/query
+│   ├── integrations/        # Composio provider wrapper
+│   └── tools/               # Jira tool builder
 ├── templates/
 │   ├── backend-ruleset.md
 │   ├── frontend-ruleset.md
@@ -51,15 +63,16 @@ Never create files outside this structure without a strong reason.
 
 ---
 
-## 3. Three Workflows — Keep Them Separate
+## 3. Four Workflows — Keep Them Separate
 
 | Workflow | Trigger | Agents | Output |
 |----------|---------|--------|--------|
 | 1 — Ticket Enrichment | `POST /webhooks/jira` | Context Gatherer → Intent Reasoner → Propagator | `prompt-[ticket-key].md` attached to Jira + enriched description + comment |
 | 2 — End-of-Day Digest | `POST /digest/trigger` | GitHub Scanner → Digest Writer → Slack Poster | One Slack message with grouped commit summary |
 | 3 — Slack Q&A | `POST /slack/commands` | Context Retriever → Tech Lead Reasoner → Slack Responder | Threaded Slack reply with reasoned answer |
+| 4 — PR Auto-Description | `POST /webhooks/github` | PR Description Writer (1 agent + rule engine) | Enriched PR description on GitHub with summary, implementation details, files changed, and validation steps |
 
-**Never conflate these into one crew. Three separate files, three separate crews.**
+**Never conflate these into one crew. Four separate files, four separate crews.**
 
 Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Task + Context + Constraints + Implementation Rules + Expected Output in a single paste-ready document.
 
@@ -76,7 +89,7 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 ### Composio (locked pattern — do not change)
 - All Jira, GitHub, Slack interactions go through Composio. No raw API calls.
 - Use `Composio(provider=CrewAIProvider())` + `composio.tools.get(user_id=..., toolkits=[...])`.
-- See `src/leadsync_crew.py:_build_tools` for the reference implementation.
+- See `src/shared.py:build_tools` for the reference implementation.
 - ❌ Do NOT use `ComposioToolSet` or `toolset.get_tools(actions=[...])` — different pattern, not used here.
 - `COMPOSIO_USER_ID` from env (default: `"default"`). Only toolkits: `JIRA`, `GITHUB`, `SLACK`.
 
@@ -86,7 +99,9 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 - Never hardcode template content inline in agent prompts.
 
 ### Shared Utilities
-- `src/shared.py` exports: `_required_env()`, `build_llm()`, `build_tools()`.
+- `src/shared.py` exports: `_required_env()`, `build_llm()`, `build_tools()`, `CrewRunResult`, `memory_enabled()`, `build_memory_db_path()`.
+- `src/memory_store.py` facade exports: `init_memory_db`, `record_event`, `record_memory_item`, `query_slack_memory_context`.
+- `src/common/model_retry.py` exports: `kickoff_with_model_fallback()` — handles `-latest` stripping and flash-lite→flash fallback.
 - All crew files import from `shared.py`. Never duplicate these helpers.
 
 ### FastAPI
@@ -106,6 +121,15 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 | `SLACK_CHANNEL_ID` | Yes (WF2+3) | — |
 | `COMPOSIO_USER_ID` | No | `"default"` |
 | `LEADSYNC_GEMINI_MODEL` | No | `gemini/gemini-2.5-flash` |
+| `LEADSYNC_GITHUB_REPO_OWNER` | Yes (WF1+2) | — |
+| `LEADSYNC_GITHUB_REPO_NAME` | Yes (WF1+2) | — |
+| `LEADSYNC_MEMORY_ENABLED` | No | `"true"` |
+| `LEADSYNC_MEMORY_DB_PATH` | No | `data/leadsync.db` |
+| `LEADSYNC_DIGEST_WINDOW_MINUTES` | No | `60` |
+| `LEADSYNC_TRIGGER_TOKEN` | No (WF2 security) | — |
+| `LEADSYNC_FRONTEND_PREFS_DOC_ID` | Yes (WF1+3 prefs) | — |
+| `LEADSYNC_BACKEND_PREFS_DOC_ID` | Yes (WF1+3 prefs) | — |
+| `LEADSYNC_DATABASE_PREFS_DOC_ID` | Yes (WF1+3 prefs) | — |
 
 `_required_env(name)` in `shared.py` raises `RuntimeError` with a clear message when a required var is absent.
 
@@ -160,12 +184,11 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 ## 10. What's Cut — Do Not Re-Add
 
 - ❌ Two output files per ticket — one `prompt-[ticket-key].md` only
-- ❌ PR webhooks — main branch commits only
+- ❌ PR review/approval automation — WF4 enriches descriptions only, does not approve or merge
 - ❌ Any UI or dashboard
-- ❌ Persistent database
-- ❌ Cron/schedulers — digest is a manual HTTP trigger
+- ❌ External managed database — local SQLite memory only
 - ❌ More than 3 agents per crew
 - ❌ One mega-crew for multiple workflows
-- ❌ Any toolkit besides `JIRA`, `GITHUB`, `SLACK`
+- ❌ Any toolkit besides `JIRA`, `GITHUB`, `SLACK`, `GOOGLEDOCS`
 
 If a feature isn't in `documentation/ROADMAP.md`, it doesn't exist for this hackathon.

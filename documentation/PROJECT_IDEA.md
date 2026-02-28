@@ -5,11 +5,12 @@
 
 ## What LeadSync Is
 
-LeadSync is an agentic system that sits between a tech lead and their dev team. It removes the constant back-and-forth by doing three things automatically:
+LeadSync is an agentic system that sits between a tech lead and their dev team. It removes the constant back-and-forth by doing four things automatically:
 
 1. When a Jira ticket is created, agents enrich it with a ready-to-use AI prompt the developer can paste directly into their coding environment.
-2. At the end of the day, an agent scans GitHub and posts a digest of what changed and overall progress to Slack.
-3. When a developer asks a question in Slack about a specific ticket, an agent responds with reasoning from the tech lead's perspective — not a ticket summary, but actual judgment informed by rules and context the tech lead has defined upfront.
+2. When a pull request is opened against main, agents auto-generate a rich PR description with summary, implementation details, and suggested validation steps.
+3. At the end of the day, an agent scans GitHub and posts a digest of what changed and overall progress to Slack.
+4. When a developer asks a question in Slack about a specific ticket, an agent responds with reasoning from the tech lead's perspective — not a ticket summary, but actual judgment informed by rules and context the tech lead has defined upfront.
 
 **Current implementation status (2026-02-28):**
 - Basic Jira + Composio + Slack integration is working end-to-end for MVP flows.
@@ -17,7 +18,7 @@ LeadSync is an agentic system that sits between a tech lead and their dev team. 
 
 ---
 
-## Three Distinct Workflows
+## Four Distinct Workflows
 
 ### Workflow 1 — Ticket Enrichment (Auto-triggered)
 
@@ -68,6 +69,28 @@ LeadSync is an agentic system that sits between a tech lead and their dev team. 
 **Output in Slack:**
 - Threaded reply to the developer with a reasoned answer, not a summary.
 - Planned robustness upgrade: include precedent context from the last 5 completed Jira tickets in the same category before final reasoning.
+
+---
+
+### Workflow 4 — PR Auto-Description (Auto-triggered)
+
+**Trigger:** GitHub webhook fires when a pull request is opened, reopened, synchronized, or marked ready for review against `main`.
+
+**What happens:**
+- Agent reads the PR: title, branch name, changed files, code diffs.
+- Agent detects the Jira ticket key from branch name, PR title, or body.
+- Agent categorizes changed files by area (backend, frontend, database, testing).
+- Agent extracts code signals from diffs: new routes, functions, tests, query patterns, error handling, validation.
+- Agent generates an AI-powered summary, implementation details, and suggested validation steps.
+- The enrichment is written directly into the PR description on GitHub, preserving any manually written content.
+
+**Output on GitHub:**
+- PR description enriched with: Summary, Context (Jira key + code areas), Implementation Details, Files Changed (grouped), and Suggested Validation.
+- Enrichment is idempotent — re-pushing updates the block in place via HTML comment markers.
+
+**Graceful degradation:**
+- If AI generation fails, deterministic fallback extracts signals from diffs without LLM.
+- If primary file-fetch method fails, cascades through 4 fallback strategies (PR files → commit compare → individual commits → raw `.diff`).
 
 ---
 
@@ -152,13 +175,14 @@ leadsync/
 
 | Endpoint | Trigger | Purpose |
 |----------|---------|---------|
-| `POST /webhooks/jira` | Jira webhook | Fires Workflow 1 |
+| `POST /webhooks/jira` | Jira webhook | Fires Workflow 1 (Ticket Enrichment) |
+| `POST /webhooks/github` | GitHub webhook | Fires Workflow 4 (PR Auto-Description) |
 | `POST /digest/trigger` | Manual HTTP call | Fires Workflow 2 (demo simulation of end-of-day) |
-| `POST /slack/commands` | Slack slash command | Fires Workflow 3 |
+| `POST /slack/commands` | Slack slash command | Fires Workflow 3 (Slack Q&A) |
 
 ---
 
-## Demo Script (Live, ~4 minutes)
+## Demo Script (Live, ~5 minutes)
 
 ### Beat 1 — Ticket Enrichment (90 sec)
 - Create a sparse Jira ticket: title "add rate limiting", label `backend`, assign to Alice. No description.
@@ -167,13 +191,19 @@ leadsync/
 - Refresh Jira: title is cleaner, description is written, one attachment `prompt-LEADS-1.md` is there.
 - Open the file: a complete, paste-ready prompt. "Alice opens this, pastes into Claude Code, starts building."
 
-### Beat 2 — End-of-Day Digest (45 sec)
+### Beat 2 — PR Auto-Description (45 sec)
+- Open a pull request from a feature branch to `main`.
+- Watch the backend logs: webhook fires, files fetched, diffs analyzed, AI generates summary.
+- Refresh the PR on GitHub: description now contains Summary, Implementation Details, Files Changed, and Suggested Validation.
+- "Every PR comes pre-documented — reviewers see what changed and how to test it before reading a single line of code."
+
+### Beat 3 — End-of-Day Digest (45 sec)
 - Hit `POST /digest/trigger` (curl or simple button in logs page).
 - Watch logs: agent scans commits, groups changes, writes summary.
 - Open Slack: message appears in channel with grouped digest and progress signal.
 - "Every evening, the team sees what actually shipped — zero manual standup prep."
 
-### Beat 3 — Developer Q&A in Slack (45 sec)
+### Beat 4 — Developer Q&A in Slack (45 sec)
 - Type `/leadsync LEADS-1 Should I extend the users table or create a new one?`
 - Watch logs: agent retrieves ticket, loads tech lead context config, reasons.
 - Reply appears in Slack: opinionated answer based on the tech lead's defined preferences.
@@ -184,7 +214,7 @@ leadsync/
 ## What's Cut (Do Not Re-Add)
 
 - ❌ Two separate prompt + ruleset files — one prompt file only
-- ❌ PR webhooks — main branch commits pulled on-demand
+- ❌ PR review/approval automation — WF4 enriches descriptions only, does not approve or merge
 - ❌ Notion integration
 - ❌ Custom UI or dashboard (logs page acceptable for demo readability)
 - ❌ Nightly cron — digest is manually triggered for demo
@@ -253,7 +283,7 @@ The file is loaded at runtime (not cached) by Workflow 3, so every update is ref
 
 ## Coding Agent Rules
 
-1. **Three workflows, three separate agent crews** — do not conflate them into one mega-flow.
+1. **Four workflows, four separate agent crews** — do not conflate them into one mega-flow.
 2. **One output file per ticket** — `prompt-[ticket-key].md` — not two files.
 3. **Tech Lead Context config is the reasoning backbone for Workflow 3** — it must be loaded and injected, not ignored.
 4. **Slack Q&A must reason, not summarize** — the agent response should feel like a judgment call, not a lookup.
