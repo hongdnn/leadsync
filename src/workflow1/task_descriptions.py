@@ -28,7 +28,8 @@ def gather_description(
         "2) Last 24h main-branch commits related to this issue scope (if found)\n"
         "3) Risks/constraints discovered\n"
         "4) Summary of previous progress from the latest 5 completed same-label tickets\n"
-        "   - Include ticket keys + short summary + description excerpts so formatting patterns are visible.\n"
+        "   - Include ticket keys + short summary + implementation details when available.\n"
+        "   - Implementation details come from WF6 scans and include files changed.\n"
         "5) 3-8 source files or modules likely impacted (demo scope only) as strict lines in this exact format:\n"
         "   KEY_FILE: <path> | WHY: <one-line rationale> | CONFIDENCE: <high|medium|low>\n"
         "   - Paths must start with `demo/`.\n"
@@ -37,15 +38,13 @@ def gather_description(
 
 def reason_description(
     *,
-    ruleset_file: str,
-    ruleset_content: str,
     preference_category: str,
     team_preferences: str,
     common_context: str,
     general_rules: str = "",
 ) -> str:
     """Build reasoner task prompt text."""
-    rules_suffix = f"\n8) Additional general rules:\n{general_rules}\n" if general_rules else ""
+    rules_suffix = f"\n7) Additional general rules:\n{general_rules}\n" if general_rules else ""
     return (
         "From gathered context, generate:\n"
         "1) One markdown document with these exact sections in order:\n"
@@ -57,14 +56,14 @@ def reason_description(
         "   - ## Expected Output\n"
         "2) In the Context section, include a concise summary of previous same-label completed "
         "work so the assignee sees what has already been completed in this development phase.\n"
+        "   - Leverage implementation details (files changed, code areas modified) when available.\n"
         "   - Infer writing pattern (tone/structure) from those recent ticket summary/description examples.\n"
         "3) In the Key Files section, include exactly the key files from gatherer output with path, why, and confidence.\n"
         "   - Key file paths must be under `demo/`.\n"
-        f"4) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
-        f"5) Apply team preference guidance from Google Docs category '{preference_category}':\n"
+        f"4) Apply team rules and preferences from Google Docs category '{preference_category}':\n"
         f"{team_preferences}\n"
-        "6) Add implementation output checklist (code/tests/docs)\n"
-        "7) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
+        "5) Add implementation output checklist (code/tests/docs)\n"
+        "6) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
         f"{common_context}"
         f"{rules_suffix}"
     )
@@ -77,8 +76,6 @@ def propagate_description(
     has_comment: bool,
     has_edit: bool,
     has_attach: bool,
-    ruleset_file: str,
-    ruleset_content: str,
     preference_category: str,
     team_preferences: str,
 ) -> str:
@@ -111,8 +108,7 @@ def propagate_description(
         "- Keep code/file suggestions only in the prompt attachment markdown.\n"
         "- For issue description updates, avoid opening like 'This ticket ...' or 'This task ...'.\n"
         "- Mention that a prompt markdown attachment will be added when available.\n"
-        f"- Apply selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
-        f"- Apply Google Docs team preference guidance category '{preference_category}':\n{team_preferences}\n"
+        f"- Apply team rules and preferences from Google Docs category '{preference_category}':\n{team_preferences}\n"
         "- Do NOT write meta/system statements such as 'the ticket has been enriched' or "
         "'it is now ready for development'. Keep wording developer-facing and concrete.\n"
         "- Never call any tool that is not listed in available tool names."

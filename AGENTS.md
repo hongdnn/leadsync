@@ -3,17 +3,6 @@
 
 ---
 
-## 0. Before Every Task — Check the Roadmap
-
-**Always read `documentation/ROADMAP.md` before starting any work.**
-
-1. Find the task in the roadmap. If it isn't there, don't build it.
-2. Identify which developer owns it: **Dev 1 (API & Integration)** or **Dev 2 (Crew Logic & Content)**. Do not cross the boundary — each developer owns their layer.
-3. Check if the task is blocked. If a prior checkpoint hasn't been reached, stop and flag it rather than working around it.
-4. After completing a task or reaching a checkpoint, update `documentation/ROADMAP.md` — mark checkboxes done and update the Status Log table at the bottom.
-
----
-
 ## 1. Project Identity
 
 **LeadSync** is an agentic context engine: Jira webhook fires → CrewAI agents enrich the ticket → a paste-ready AI prompt is attached back to Jira → dev copies it into their coding environment.
@@ -41,9 +30,6 @@ leadsync/
 │   └── db-ruleset.md
 ├── config/
 │   └── tech-lead-context.md
-├── documentation/
-│   ├── PROJECT_IDEA.md
-│   └── ROADMAP.md
 ├── tests/
 ├── requirements.txt
 └── .env
@@ -164,4 +150,4 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 - ❌ One mega-crew for multiple workflows
 - ❌ Any toolkit besides `JIRA`, `GITHUB`, `SLACK`
 
-If a feature isn't in `documentation/ROADMAP.md`, it doesn't exist for this hackathon.
+Only build features explicitly described in these instructions.

@@ -28,7 +28,7 @@ def persist_workflow1_memory(
     runtime: Any,
     logger: logging.Logger,
     issue: IssueContext,
-    ruleset_file: str,
+    preference_category: str,
     used_model: str,
     prompt_path: Path,
     reasoned: str,
@@ -52,7 +52,7 @@ def persist_workflow1_memory(
                 label=issue.primary_label or None,
                 component=issue.primary_component or None,
                 payload={
-                    "ruleset_file": ruleset_file,
+                    "preference_category": preference_category,
                     "model": used_model,
                     "prompt_file": str(prompt_path),
                     "repo_owner": repo_owner,
@@ -70,7 +70,7 @@ def persist_workflow1_memory(
                 component=issue.primary_component or None,
                 summary=(issue.summary or f"Technical guidance prepared for {issue.issue_key}").strip(),
                 decision=(reasoned or "No explicit decision text captured.").strip(),
-                rules_applied=ruleset_file,
+                rules_applied=preference_category,
                 context={
                     "same_label_history": same_label_history,
                     "gathered_context": gathered,

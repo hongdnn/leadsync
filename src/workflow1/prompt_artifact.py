@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 from src.common.tool_helpers import find_tool_by_name
@@ -28,7 +29,7 @@ def normalize_prompt_markdown(
     summary: str,
     gathered_context: str,
     key_files_markdown: str,
-    ruleset_content: str,
+    team_preferences: str,
 ) -> str:
     """Build required-section markdown from reasoner output with safe fallback."""
     if reasoner_text and has_required_sections(reasoner_text):
@@ -40,7 +41,7 @@ def normalize_prompt_markdown(
         "- Keep output paste-ready for the assignee.\n"
         "- Follow repository standards and existing patterns."
     )
-    rules_text = ruleset_content.strip() or "- No ruleset content found; use backend defaults."
+    rules_text = team_preferences.strip() or "- No team preferences found; use backend defaults."
     expected_output = reasoner_text.strip() or "Provide an implementation-ready prompt."
     return (
         "## Task\n"
@@ -92,28 +93,39 @@ def safe_issue_key_for_filename(issue_key: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "-", issue_key or "UNKNOWN")
 
 
-def write_prompt_file(artifact_dir: Path, issue_key: str, markdown: str) -> Path:
-    """Write workflow1 prompt artifact and return absolute file path."""
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    prompt_path = artifact_dir / f"prompt-{safe_issue_key_for_filename(issue_key)}.md"
-    prompt_path.write_text(markdown, encoding="utf-8")
-    return prompt_path.resolve()
+def upload_prompt_to_jira(tools: list[Any], issue_key: str, markdown: str) -> Path:
+    """Write prompt markdown to a temp file, upload to Jira, and return the temp path.
 
-
-def attach_prompt_file(tools: list[Any], issue_key: str, file_path: Path) -> Any:
-    """Attach local prompt file to Jira issue through Composio tool."""
+    Args:
+        tools: Composio tool list containing JIRA_ADD_ATTACHMENT.
+        issue_key: Jira issue key for the attachment.
+        markdown: Prompt markdown content to upload.
+    Returns:
+        Path to the temporary file (caller may clean up).
+    Raises:
+        RuntimeError: When JIRA_ADD_ATTACHMENT tool is unavailable or fails.
+    """
     tool = find_tool_by_name(tools, "JIRA_ADD_ATTACHMENT")
     if tool is None:
         raise RuntimeError("JIRA_ADD_ATTACHMENT tool is required for Workflow 1.")
-    resolved = file_path.resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(f"Prompt file not found for attachment: {resolved}")
-    response = tool.run(
-        issue_key=issue_key,
-        local_file_path=str(resolved),
-        file_to_upload=str(resolved),
-    )
-    if response_indicates_failure(response):
-        details = summarize_tool_response(response)
-        raise RuntimeError(f"JIRA_ADD_ATTACHMENT failed: {details}")
-    return response
+    filename = f"prompt-{safe_issue_key_for_filename(issue_key)}.md"
+    tmp_dir = tempfile.mkdtemp(prefix="leadsync_")
+    tmp_path = Path(tmp_dir) / filename
+    tmp_path.write_text(markdown, encoding="utf-8")
+    resolved = tmp_path.resolve()
+    try:
+        response = tool.run(
+            issue_key=issue_key,
+            local_file_path=str(resolved),
+            file_to_upload=str(resolved),
+        )
+        if response_indicates_failure(response):
+            details = summarize_tool_response(response)
+            raise RuntimeError(f"JIRA_ADD_ATTACHMENT failed: {details}")
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+            Path(tmp_dir).rmdir()
+        except OSError:
+            pass
+    return resolved

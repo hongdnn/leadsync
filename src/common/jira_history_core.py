@@ -4,7 +4,9 @@ import logging
 from typing import Any
 
 from src.common.jira_history_parse import (
+    HistoryTicket,
     extract_primary_component,
+    extract_wf6_implementation,
     parse_history_tickets,
     safe_dict,
     safe_list,
@@ -80,6 +82,29 @@ def load_issue_project_and_label(tools: list[Any], issue_key: str) -> tuple[str,
     return project_key, label
 
 
+def _enrich_tickets_with_wf6(
+    tools: list[Any],
+    tickets: list[HistoryTicket],
+) -> None:
+    """Best-effort: fetch each ticket via JIRA_GET_ISSUE and extract WF6 details.
+
+    Args:
+        tools: Available Composio tools.
+        tickets: Parsed history tickets to enrich in-place.
+    """
+    get_tool = find_tool_by_name(tools, GET_ISSUE_TOOL)
+    if get_tool is None:
+        return
+    for ticket in tickets:
+        try:
+            response = get_tool.run(issue_id_or_key=ticket.key)
+            details = extract_wf6_implementation(str(response))
+            if details:
+                ticket.implementation_details = details
+        except Exception:
+            logger.warning("WF6 detail fetch failed for %s; skipping.", ticket.key)
+
+
 def build_same_label_progress_context(
     tools: list[Any],
     project_key: str,
@@ -106,12 +131,16 @@ def build_same_label_progress_context(
     tickets = parse_history_tickets(result=result, limit=limit)
     if not tickets:
         return "No completed same-label tickets found."
+    _enrich_tickets_with_wf6(tools, tickets)
     lines = [f"Same-label completed tickets (latest {len(tickets)}):"]
     for ticket in tickets:
         resolved = ticket.resolution_date or "unknown-resolution-date"
         summary = ticket.summary or "No summary"
+        detail_suffix = ticket.description_excerpt
+        if ticket.implementation_details:
+            detail_suffix = ticket.implementation_details
         lines.append(
             f"- {ticket.key} [{ticket.status}] ({resolved}): {summary} | "
-            f"Completed details: {ticket.description_excerpt}"
+            f"Completed details: {detail_suffix}"
         )
     return "\n".join(lines)

@@ -15,6 +15,7 @@ class HistoryTicket:
     description_excerpt: str
     status: str
     resolution_date: str
+    implementation_details: str = ""
 
 
 def safe_dict(value: Any) -> dict[str, Any]:
@@ -49,6 +50,46 @@ def description_excerpt(value: Any, max_chars: int = 220) -> str:
     if len(plain) <= max_chars:
         return plain
     return plain[: max_chars - 3].rstrip() + "..."
+
+
+WF6_COMMENT_MARKER = "<!-- leadsync:wf6 -->"
+
+
+def extract_wf6_implementation(response_text: str, max_chars: int = 300) -> str:
+    """Extract WF6 implementation summary from a JIRA_GET_ISSUE response string.
+
+    Args:
+        response_text: Stringified JIRA_GET_ISSUE response.
+        max_chars: Maximum length of returned text.
+    Returns:
+        Implementation details string, or empty string if not found.
+    """
+    marker_pos = response_text.find(WF6_COMMENT_MARKER)
+    if marker_pos < 0:
+        return ""
+    after_marker = response_text[marker_pos + len(WF6_COMMENT_MARKER):]
+    lines = after_marker.splitlines()
+    summary_line = ""
+    files_line = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("IMPLEMENTATION_SUMMARY:"):
+            summary_line = stripped[len("IMPLEMENTATION_SUMMARY:"):].strip()
+        elif stripped.startswith("FILES_CHANGED:"):
+            files_line = stripped[len("FILES_CHANGED:"):].strip()
+    if not summary_line:
+        raw_lines = [
+            l.strip()
+            for l in lines
+            if l.strip() and not l.strip().startswith("Implementation scan for")
+        ]
+        summary_line = " ".join(raw_lines[:3])
+    result = summary_line
+    if files_line and files_line.lower() != "none":
+        result += f" Files: {files_line}"
+    if len(result) > max_chars:
+        result = result[:max_chars - 3].rstrip() + "..."
+    return result
 
 
 def extract_issue_list(result: Any) -> list[dict[str, Any]]:

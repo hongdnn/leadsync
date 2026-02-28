@@ -19,7 +19,6 @@ from src.workflow1.key_files import (
 )
 from src.workflow1.ops import persist_workflow1_memory, validate_github_requirements
 from src.workflow1.prompt_artifact import normalize_prompt_markdown
-from src.workflow1.rules import load_ruleset_content
 
 
 @dataclass
@@ -30,12 +29,10 @@ class Workflow1Runtime:
     Task: Any
     Crew: Any
     Process: Any
-    select_ruleset_file: Callable[[list[str], list[str]], str]
     resolve_preference_category: Callable[[list[str], list[str]], str]
     load_preferences_for_category: Callable[[str, list[Any]], str]
     build_same_label_progress_context: Callable[..., str]
-    write_prompt_file: Callable[[str, str], Path]
-    attach_prompt_file: Callable[[list[Any], str, Path], Any]
+    upload_prompt_to_jira: Callable[[list[Any], str, str], Path]
     memory_enabled: Callable[[], bool]
     build_memory_db_path: Callable[[], str]
     record_event: Callable[..., None]
@@ -79,8 +76,6 @@ def run_workflow1(
         repo_name=repo_name,
         has_github_tools=has_github_tools,
     )
-    ruleset_file = runtime.select_ruleset_file(issue.labels, issue.component_names)
-    ruleset_content = load_ruleset_content(ruleset_file)
     preference_category = runtime.resolve_preference_category(issue.labels, issue.component_names)
     team_preferences = runtime.load_preferences_for_category(preference_category, docs_tools)
     same_label_history = runtime.build_same_label_progress_context(
@@ -97,8 +92,6 @@ def run_workflow1(
         tools=tools,
         tool_names=tool_names,
         context_text=context_text,
-        ruleset_file=ruleset_file,
-        ruleset_content=ruleset_content,
         preference_category=preference_category,
         team_preferences=team_preferences,
         has_jira_get_issue=has_jira_get_issue,
@@ -134,15 +127,14 @@ def run_workflow1(
         summary=issue.summary,
         gathered_context=gathered,
         key_files_markdown=key_files_markdown,
-        ruleset_content=ruleset_content,
+        team_preferences=team_preferences,
     )
-    prompt_path = runtime.write_prompt_file(issue.issue_key, prompt_markdown)
-    runtime.attach_prompt_file(tools, issue.issue_key, prompt_path)
+    prompt_path = runtime.upload_prompt_to_jira(tools, issue.issue_key, prompt_markdown)
     persist_workflow1_memory(
         runtime=runtime,
         logger=logger,
         issue=issue,
-        ruleset_file=ruleset_file,
+        preference_category=preference_category,
         used_model=used_model,
         prompt_path=prompt_path,
         reasoned=reasoned,

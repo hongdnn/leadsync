@@ -1,6 +1,7 @@
 """Workflow 2 runner implementation (End-of-Day Digest)."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 import logging
 from typing import Any, Callable
 
@@ -40,6 +41,9 @@ def run_workflow2(
     idempotency_enabled: bool,
 ) -> CrewRunResult:
     """Execute Workflow 2 end-to-end and return crew result."""
+    since_dt = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     maybe_skip = maybe_acquire_digest_lock(
         runtime=runtime,
         logger=logger,
@@ -82,10 +86,11 @@ def run_workflow2(
     scan_task = runtime.Task(
         description=(
             f"Use GITHUB tools only for repository {repo_owner}/{repo_name} "
-            f"to list ALL main-branch commits from the last {window_minutes} minutes.\n"
+            f"to list ALL commits on the main branch since {since_iso} (UTC).\n"
+            f"Pass '{since_iso}' as the 'since' parameter when calling the GitHub API.\n"
             "- Include every commit — do not skip or filter any.\n"
             "- For each commit: author, commit message, and impacted area.\n"
-            "- If no commits exist in the window, return 'NO_COMMITS'."
+            "- If no commits exist after that timestamp, return 'NO_COMMITS'."
         ),
         expected_output="Complete list of commits from the time window.",
         agent=scanner,

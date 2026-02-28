@@ -7,7 +7,7 @@ from typing import Any
 from src.common.tool_helpers import find_tool_by_name
 from src.common.tool_response import response_indicates_failure, summarize_tool_response
 
-MAX_HISTORY_LINES = 4
+MAX_HISTORY_LINES = 6
 MAX_KEY_FILE_LINES = 4
 MAX_SECTION_LINES = 4
 

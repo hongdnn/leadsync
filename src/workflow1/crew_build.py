@@ -16,8 +16,6 @@ def build_workflow1_crew(
     tools: list[Any],
     tool_names: set[str],
     context_text: str,
-    ruleset_file: str,
-    ruleset_content: str,
     preference_category: str,
     team_preferences: str,
     has_jira_get_issue: bool,
@@ -67,8 +65,6 @@ def build_workflow1_crew(
     )
     reason_task = runtime.Task(
         description=reason_description(
-            ruleset_file=ruleset_file,
-            ruleset_content=ruleset_content,
             preference_category=preference_category,
             team_preferences=team_preferences,
             common_context=context_text,
@@ -85,8 +81,6 @@ def build_workflow1_crew(
             has_comment=has_jira_add_comment,
             has_edit=has_jira_edit_issue,
             has_attach=has_jira_add_attachment,
-            ruleset_file=ruleset_file,
-            ruleset_content=ruleset_content,
             preference_category=preference_category,
             team_preferences=team_preferences,
         ),

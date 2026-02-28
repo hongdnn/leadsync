@@ -14,6 +14,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
+from src.done_scan_crew import run_done_scan_crew
 from src.jira_link_crew import run_jira_link_crew
 from src.leadsync_crew import run_leadsync_crew
 from src.memory_store import init_memory_db, record_memory_item
@@ -51,10 +52,35 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _is_done_transition(payload: dict[str, Any]) -> bool:
+    """Check if Jira webhook payload represents a status change to Done.
+
+    Args:
+        payload: Jira webhook JSON body.
+    Returns:
+        True when changelog contains a status field changed to 'Done'.
+    """
+    changelog = payload.get("changelog", {})
+    if not isinstance(changelog, dict):
+        return False
+    items = changelog.get("items", [])
+    if not isinstance(items, list):
+        return False
+    return any(
+        isinstance(item, dict)
+        and item.get("field", "").lower() == "status"
+        and item.get("toString", "").lower() == "done"
+        for item in items
+    )
+
+
 @app.post("/webhooks/jira")
 def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
     """
-    Trigger Workflow 1: Ticket Enrichment.
+    Trigger Workflow 1 (Ticket Enrichment) or Workflow 6 (Done Scan).
+
+    Routes to WF6 when the payload indicates a status transition to Done,
+    otherwise falls through to WF1.
 
     Args:
         payload: Jira webhook JSON body.
@@ -65,7 +91,42 @@ def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
         HTTPException 500: Crew failure.
     """
     try:
-        result = run_leadsync_crew(payload=payload)
+        if _is_done_transition(payload):
+            result = run_done_scan_crew(payload=payload)
+        else:
+            result = run_leadsync_crew(payload=payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
+    return {"status": "processed", "model": result.model, "result": result.raw}
+
+
+@app.post("/webhooks/jira/done")
+def jira_done_webhook(payload: dict[str, Any]) -> dict[str, str]:
+    """
+    Trigger Workflow 6 (Done Ticket Implementation Scan) directly.
+
+    Accepts Jira Automation 'Issue data (Jira format)' — the issue object
+    at the top level (no 'issue' wrapper, no changelog). Wraps it into the
+    standard shape expected by run_done_scan_crew and parse_issue_context.
+
+    Args:
+        payload: Jira issue object in Jira REST API format.
+    Returns:
+        Status, model, and raw crew result.
+    Raises:
+        HTTPException 400: Missing env vars.
+        HTTPException 500: Crew failure.
+    """
+    wrapped = {
+        "issue": payload,
+        "changelog": {
+            "items": [{"field": "status", "fromString": "In Review", "toString": "Done"}]
+        },
+    }
+    try:
+        result = run_done_scan_crew(payload=wrapped)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

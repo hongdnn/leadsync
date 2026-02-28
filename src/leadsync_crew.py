@@ -5,7 +5,6 @@ Exports: run_leadsync_crew(payload) -> CrewRunResult
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
@@ -34,17 +33,14 @@ from src.shared import (
 from src.tools.jira_tools import get_agent_tools
 from src.workflow1.prompt_artifact import (
     REQUIRED_SECTIONS,
-    attach_prompt_file as _attach_prompt_file_impl,
     has_required_sections as _has_required_sections,
     normalize_prompt_markdown as _normalize_prompt_markdown,
     safe_issue_key_for_filename as _safe_issue_key_for_filename,
-    write_prompt_file as _write_prompt_file_impl,
+    upload_prompt_to_jira as _upload_prompt_to_jira_impl,
 )
-from src.workflow1.rules import select_ruleset_file as _select_ruleset_file
 from src.workflow1.runner import Workflow1Runtime, run_workflow1
 
 logger = logging.getLogger(__name__)
-ARTIFACT_DIR = Path("artifacts") / "workflow1"
 
 
 def _merge_tools(*tool_lists: list[Any]) -> list[Any]:
@@ -67,14 +63,9 @@ def _required_sections() -> list[str]:
     return list(REQUIRED_SECTIONS)
 
 
-def _write_prompt_file(issue_key: str, markdown: str) -> Path:
-    """Persist prompt markdown artifact to disk using wrapper-configured artifact dir."""
-    return _write_prompt_file_impl(ARTIFACT_DIR, issue_key, markdown)
-
-
-def _attach_prompt_file(tools: list[Any], issue_key: str, file_path: Path) -> Any:
-    """Attach local prompt file to Jira issue via Composio attachment tool."""
-    return _attach_prompt_file_impl(tools, issue_key, file_path)
+def _upload_prompt_to_jira(tools: list[Any], issue_key: str, markdown: str) -> Path:
+    """Upload prompt markdown to Jira via temp file (no local persistence)."""
+    return _upload_prompt_to_jira_impl(tools, issue_key, markdown)
 
 
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
@@ -100,12 +91,10 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         Task=Task,
         Crew=Crew,
         Process=Process,
-        select_ruleset_file=_select_ruleset_file,
         resolve_preference_category=resolve_preference_category,
         load_preferences_for_category=load_preferences_for_category,
         build_same_label_progress_context=build_same_label_progress_context,
-        write_prompt_file=_write_prompt_file,
-        attach_prompt_file=_attach_prompt_file,
+        upload_prompt_to_jira=_upload_prompt_to_jira,
         memory_enabled=memory_enabled,
         build_memory_db_path=build_memory_db_path,
         record_event=record_event,
