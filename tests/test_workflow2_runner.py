@@ -38,12 +38,15 @@ def test_run_workflow2_uses_window_minutes_in_scan_prompt(mock_kickoff):
         window_minutes=60,
         run_source="manual",
         bucket_start_utc=None,
+        repo_owner="acme",
+        repo_name="leadsync",
         idempotency_enabled=True,
     )
 
     scan_task_description = runtime.Task.call_args_list[0].kwargs["description"]
     assert "last 60 minutes" in scan_task_description
     assert "NO_MEANINGFUL_COMMITS" in scan_task_description
+    assert "repository acme/leadsync" in scan_task_description
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")
@@ -64,6 +67,8 @@ def test_run_workflow2_write_prompt_includes_no_commit_heartbeat_line(mock_kicko
         window_minutes=60,
         run_source="manual",
         bucket_start_utc=None,
+        repo_owner="acme",
+        repo_name="leadsync",
         idempotency_enabled=True,
     )
 
@@ -88,6 +93,8 @@ def test_run_workflow2_skips_duplicate_bucket_without_kickoff(mock_kickoff):
         window_minutes=60,
         run_source="scheduled",
         bucket_start_utc="2026-02-28T11:00:00Z",
+        repo_owner="acme",
+        repo_name="leadsync",
         idempotency_enabled=True,
     )
 

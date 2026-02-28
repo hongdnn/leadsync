@@ -32,6 +32,8 @@ def run_digest_crew(
     window_minutes: int | None = None,
     run_source: str = "manual",
     bucket_start_utc: str | None = None,
+    repo_owner: str | None = None,
+    repo_name: str | None = None,
 ) -> CrewRunResult:
     """
     Run Workflow 2 digest crew and return normalized result.
@@ -40,6 +42,8 @@ def run_digest_crew(
         window_minutes: Optional override for commit lookback window.
         run_source: Source label for observability (manual/scheduled).
         bucket_start_utc: Optional UTC bucket marker for idempotency.
+        repo_owner: Optional repository owner override.
+        repo_name: Optional repository name override.
     Returns:
         CrewRunResult with raw result text and effective model.
     """
@@ -47,6 +51,14 @@ def run_digest_crew(
     _required_gemini_api_key()
     composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
     slack_channel_id = _required_env("SLACK_CHANNEL_ID")
+    effective_repo_owner = (repo_owner or os.getenv("LEADSYNC_GITHUB_REPO_OWNER", "")).strip()
+    effective_repo_name = (repo_name or os.getenv("LEADSYNC_GITHUB_REPO_NAME", "")).strip()
+    if not effective_repo_owner or not effective_repo_name:
+        raise RuntimeError(
+            "Missing GitHub repository target. Provide repo_owner/repo_name in "
+            "POST /digest/trigger payload or set LEADSYNC_GITHUB_REPO_OWNER and "
+            "LEADSYNC_GITHUB_REPO_NAME."
+        )
     effective_window = window_minutes or build_digest_window_minutes()
     runtime = Workflow2Runtime(
         Agent=Agent,
@@ -69,5 +81,7 @@ def run_digest_crew(
         window_minutes=effective_window,
         run_source=run_source,
         bucket_start_utc=bucket_start_utc,
+        repo_owner=effective_repo_owner,
+        repo_name=effective_repo_name,
         idempotency_enabled=digest_idempotency_enabled(),
     )

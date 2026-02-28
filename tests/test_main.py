@@ -87,6 +87,29 @@ def test_digest_trigger_passes_schedule_payload(mock_run, client):
 
 
 @patch("src.main.run_digest_crew")
+def test_digest_trigger_passes_repo_payload(mock_run, client):
+    mock_run.return_value = MagicMock(raw="digest posted", model="gemini/gemini-2.5-flash")
+    response = client.post(
+        "/digest/trigger",
+        json={
+            "run_source": "scheduled",
+            "window_minutes": 60,
+            "bucket_start_utc": "2026-02-28T11:00:00Z",
+            "repo_owner": "octocat",
+            "repo_name": "hello-world",
+        },
+    )
+    assert response.status_code == 200
+    mock_run.assert_called_once_with(
+        window_minutes=60,
+        run_source="scheduled",
+        bucket_start_utc="2026-02-28T11:00:00Z",
+        repo_owner="octocat",
+        repo_name="hello-world",
+    )
+
+
+@patch("src.main.run_digest_crew")
 def test_digest_trigger_requires_valid_token_when_configured(mock_run, client, monkeypatch):
     monkeypatch.setenv("LEADSYNC_TRIGGER_TOKEN", "secret-token")
     response = client.post("/digest/trigger")

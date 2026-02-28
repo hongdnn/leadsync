@@ -35,6 +35,8 @@ def run_workflow2(
     window_minutes: int,
     run_source: str,
     bucket_start_utc: str | None,
+    repo_owner: str,
+    repo_name: str,
     idempotency_enabled: bool,
 ) -> CrewRunResult:
     """Execute Workflow 2 end-to-end and return crew result."""
@@ -55,7 +57,7 @@ def run_workflow2(
         role="GitHub Scanner",
         goal=(
             "Collect meaningful main-branch commit activity "
-            f"from the last {window_minutes} minutes."
+            f"from repository {repo_owner}/{repo_name} in the last {window_minutes} minutes."
         ),
         backstory="You gather commit signals only and avoid speculation.",
         verbose=True,
@@ -79,8 +81,8 @@ def run_workflow2(
     )
     scan_task = runtime.Task(
         description=(
-            "Use GITHUB tools to scan main-branch changes "
-            f"from the last {window_minutes} minutes.\n"
+            f"Use GITHUB tools only for repository {repo_owner}/{repo_name} "
+            f"to scan main-branch changes from the last {window_minutes} minutes.\n"
             "- Include author, commit summary, impacted area, and risk flags.\n"
             "- Exclude noise-only commits when possible.\n"
             "- If no meaningful commits are found, return 'NO_MEANINGFUL_COMMITS'."

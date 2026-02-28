@@ -28,6 +28,8 @@ LEADSYNC_MEMORY_ENABLED=true
 LEADSYNC_MEMORY_DB_PATH=data/leadsync.db
 LEADSYNC_DIGEST_WINDOW_MINUTES=60
 LEADSYNC_DIGEST_IDEMPOTENCY_ENABLED=true
+LEADSYNC_GITHUB_REPO_OWNER=...
+LEADSYNC_GITHUB_REPO_NAME=...
 # Optional but recommended in deploy:
 # LEADSYNC_TRIGGER_TOKEN=replace_with_shared_secret
 ```
@@ -69,7 +71,7 @@ Scheduled-style call with explicit window metadata:
 curl -X POST http://127.0.0.1:8000/digest/trigger \
   -H "Content-Type: application/json" \
   -H "X-LeadSync-Trigger-Token: $LEADSYNC_TRIGGER_TOKEN" \
-  -d '{"run_source":"scheduled","window_minutes":60,"bucket_start_utc":"2026-02-28T11:00:00Z"}'
+  -d '{"run_source":"scheduled","window_minutes":60,"bucket_start_utc":"2026-02-28T11:00:00Z","repo_owner":"your-org","repo_name":"your-repo"}'
 ```
 
 ### Workflow 3: Slack Q&A
@@ -102,11 +104,13 @@ curl -X POST http://127.0.0.1:8000/slack/commands \
 7. In the Cron service, set:
    - `DIGEST_TRIGGER_URL=https://<your-api-domain>/digest/trigger`
    - `LEADSYNC_TRIGGER_TOKEN=<same-shared-secret>`
+   - `LEADSYNC_GITHUB_REPO_OWNER=<your-org-or-username>`
+   - `LEADSYNC_GITHUB_REPO_NAME=<your-repo-name>`
 8. Set schedule expression to hourly UTC (recommended offset): `7 * * * *`.
 9. Cron command example:
 
 ```bash
-python -c "import json, os, urllib.request; req=urllib.request.Request(os.environ['DIGEST_TRIGGER_URL'], data=json.dumps({'run_source':'scheduled','window_minutes':60}).encode('utf-8'), headers={'Content-Type':'application/json','X-LeadSync-Trigger-Token':os.environ['LEADSYNC_TRIGGER_TOKEN']}, method='POST'); print(urllib.request.urlopen(req, timeout=60).read().decode())"
+python -c "import json, os, urllib.request; req=urllib.request.Request(os.environ['DIGEST_TRIGGER_URL'], data=json.dumps({'run_source':'scheduled','window_minutes':60,'repo_owner':os.environ['LEADSYNC_GITHUB_REPO_OWNER'],'repo_name':os.environ['LEADSYNC_GITHUB_REPO_NAME']}).encode('utf-8'), headers={'Content-Type':'application/json','X-LeadSync-Trigger-Token':os.environ['LEADSYNC_TRIGGER_TOKEN']}, method='POST'); print(urllib.request.urlopen(req, timeout=60).read().decode())"
 ```
 
 10. Trigger once manually for verification:
@@ -115,7 +119,7 @@ python -c "import json, os, urllib.request; req=urllib.request.Request(os.enviro
 curl -X POST https://<your-api-domain>/digest/trigger \
   -H "Content-Type: application/json" \
   -H "X-LeadSync-Trigger-Token: <same-shared-secret>" \
-  -d '{"run_source":"manual","window_minutes":60}'
+  -d '{"run_source":"manual","window_minutes":60,"repo_owner":"your-org","repo_name":"your-repo"}'
 ```
 
 Expected: one message appears in the dedicated Slack channel each run, including quiet hours (no meaningful commits).

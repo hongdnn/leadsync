@@ -31,6 +31,8 @@ def test_run_digest_crew_returns_crew_run_result(
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_OWNER", "acme")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_NAME", "leadsync")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
     mock_build_llm.return_value = "gemini/gemini-2.5-flash"
     mock_build_tools.return_value = []
@@ -60,6 +62,8 @@ def test_run_digest_crew_model_fallback(
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_OWNER", "acme")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_NAME", "leadsync")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
     mock_build_llm.return_value = "gemini/gemini-2.5-flash-latest"
     mock_build_tools.return_value = []
@@ -98,6 +102,8 @@ def test_run_digest_crew_records_memory_when_enabled(
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_OWNER", "acme")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_NAME", "leadsync")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
     mock_build_llm.return_value = "gemini/gemini-2.5-flash"
     mock_build_tools.return_value = []
@@ -137,6 +143,8 @@ def test_run_digest_crew_passes_schedule_arguments(
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_OWNER", "acme")
+    monkeypatch.setenv("LEADSYNC_GITHUB_REPO_NAME", "leadsync")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
     mock_build_llm.return_value = "gemini/gemini-2.5-flash"
     mock_build_window.return_value = 60
@@ -149,9 +157,26 @@ def test_run_digest_crew_passes_schedule_arguments(
         window_minutes=120,
         run_source="scheduled",
         bucket_start_utc="2026-02-28T11:00:00Z",
+        repo_owner="octocat",
+        repo_name="hello-world",
     )
 
     kwargs = mock_run_workflow2.call_args.kwargs
     assert kwargs["window_minutes"] == 120
     assert kwargs["run_source"] == "scheduled"
     assert kwargs["bucket_start_utc"] == "2026-02-28T11:00:00Z"
+    assert kwargs["repo_owner"] == "octocat"
+    assert kwargs["repo_name"] == "hello-world"
+
+
+def test_run_digest_crew_raises_when_missing_repo_target(monkeypatch):
+    monkeypatch.setenv("COMPOSIO_USER_ID", "default")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    monkeypatch.delenv("LEADSYNC_GITHUB_REPO_OWNER", raising=False)
+    monkeypatch.delenv("LEADSYNC_GITHUB_REPO_NAME", raising=False)
+    with patch("src.digest_crew.build_tools", return_value=[]):
+        with patch("src.digest_crew.build_llm", return_value="gemini/gemini-2.5-flash"):
+            from src.digest_crew import run_digest_crew
+            with pytest.raises(RuntimeError, match="Missing GitHub repository target"):
+                run_digest_crew()

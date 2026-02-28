@@ -90,11 +90,20 @@ async def digest_trigger(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="run_source must be 'manual' or 'scheduled'.")
     bucket_start_utc = str(payload.get("bucket_start_utc", "")).strip() or None
     window_minutes = _coerce_window_minutes(payload.get("window_minutes"))
+    repo_owner = str(payload.get("repo_owner", "")).strip() or None
+    repo_name = str(payload.get("repo_name", "")).strip() or None
     try:
+        kwargs: dict[str, Any] = {
+            "window_minutes": window_minutes,
+            "run_source": run_source,
+            "bucket_start_utc": bucket_start_utc,
+        }
+        if repo_owner:
+            kwargs["repo_owner"] = repo_owner
+        if repo_name:
+            kwargs["repo_name"] = repo_name
         result = run_digest_crew(
-            window_minutes=window_minutes,
-            run_source=run_source,
-            bucket_start_utc=bucket_start_utc,
+            **kwargs
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
