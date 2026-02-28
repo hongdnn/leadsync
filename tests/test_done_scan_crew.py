@@ -366,7 +366,8 @@ class TestRunDoneScanCrew:
 
         run_done_scan_crew(payload=_done_payload())
         jira_call = [
-            c for c in mock_build.call_args_list if c.kwargs.get("tools")
+            c for c in mock_build.call_args_list
+            if c.kwargs.get("tools") and any(t.startswith("JIRA_") for t in c.kwargs["tools"])
         ]
         assert len(jira_call) == 1
         assert "JIRA_GET_ISSUE" in jira_call[0].kwargs["tools"]

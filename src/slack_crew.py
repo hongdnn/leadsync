@@ -21,6 +21,7 @@ from src.shared import (
     build_tools,
     memory_enabled,
 )
+from src.tools.tool_registry import GOOGLEDOCS_PREFS_TOOLS, WF3_JIRA_TOOLS, WF3_SLACK_TOOLS
 from src.workflow3.parsing import parse_slack_text
 from src.workflow3.runner import Workflow3Runtime, run_workflow3
 
@@ -59,9 +60,9 @@ def run_slack_crew(
         model=model,
         thread_ts=thread_ts,
         slack_channel_id=slack_channel_id,
-        jira_tools=build_tools(user_id=composio_user_id, toolkits=["JIRA"]),
-        docs_tools=build_tools(user_id=composio_user_id, toolkits=["GOOGLEDOCS"]),
-        slack_tools=build_tools(user_id=composio_user_id, toolkits=["SLACK"]),
+        jira_tools=build_tools(user_id=composio_user_id, tools=WF3_JIRA_TOOLS),
+        docs_tools=build_tools(user_id=composio_user_id, tools=GOOGLEDOCS_PREFS_TOOLS),
+        slack_tools=build_tools(user_id=composio_user_id, tools=WF3_SLACK_TOOLS),
         runtime=runtime,
         logger=logger,
     )

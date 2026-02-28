@@ -21,6 +21,7 @@ from src.shared import (
     digest_idempotency_enabled,
     memory_enabled,
 )
+from src.tools.tool_registry import WF2_GITHUB_TOOLS, WF2_SLACK_TOOLS
 from src.workflow2.parsing import parse_digest_areas as _parse_digest_areas
 from src.workflow2.runner import Workflow2Runtime, run_workflow2
 
@@ -71,12 +72,8 @@ def run_digest_crew(
         record_memory_item=record_memory_item,
         acquire_idempotency_lock=acquire_idempotency_lock,
     )
-    github_tools = build_tools(
-        user_id=composio_user_id,
-        toolkits=["GITHUB"],
-        limit=10,
-    )
-    slack_tools = build_tools(user_id=composio_user_id, toolkits=["SLACK"])
+    github_tools = build_tools(user_id=composio_user_id, tools=WF2_GITHUB_TOOLS)
+    slack_tools = build_tools(user_id=composio_user_id, tools=WF2_SLACK_TOOLS)
     logger.info(
         "Digest crew tool counts: github=%d, slack=%d (names: %s | %s)",
         len(github_tools),

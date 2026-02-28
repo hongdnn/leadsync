@@ -5,6 +5,7 @@ Exports: run_leadsync_crew(payload) -> CrewRunResult
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
@@ -31,6 +32,7 @@ from src.shared import (
     memory_enabled,
 )
 from src.tools.jira_tools import get_agent_tools
+from src.tools.tool_registry import GOOGLEDOCS_PREFS_TOOLS, WF1_GITHUB_TOOLS
 from src.workflow1.prompt_artifact import (
     REQUIRED_SECTIONS,
     has_required_sections as _has_required_sections,
@@ -81,9 +83,9 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     model = build_llm()
     jira_tools = get_agent_tools()
     user_id = composio_user_id()
-    github_tools = build_tools(user_id=user_id, toolkits=["GITHUB"])
+    github_tools = build_tools(user_id=user_id, tools=WF1_GITHUB_TOOLS)
     tools = _merge_tools(jira_tools, github_tools)
-    docs_tools = build_tools(user_id=user_id, toolkits=["GOOGLEDOCS"])
+    docs_tools = build_tools(user_id=user_id, tools=GOOGLEDOCS_PREFS_TOOLS)
     repo_owner = _required_env("LEADSYNC_GITHUB_REPO_OWNER")
     repo_name = _required_env("LEADSYNC_GITHUB_REPO_NAME")
     runtime = Workflow1Runtime(

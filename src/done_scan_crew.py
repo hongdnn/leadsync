@@ -17,6 +17,7 @@ from src.shared import (
     composio_user_id,
     memory_enabled,
 )
+from src.tools.tool_registry import WF6_GITHUB_TOOLS, WF6_JIRA_TOOLS
 from src.workflow6.runner import Workflow6Runtime, run_workflow6
 
 
@@ -30,10 +31,8 @@ def run_done_scan_crew(payload: dict[str, Any]) -> CrewRunResult:
     """
     user_id = composio_user_id()
     model = build_llm()
-    github_tools = build_tools(user_id=user_id, toolkits=["GITHUB"])
-    jira_tools = build_tools(
-        user_id=user_id, tools=["JIRA_GET_ISSUE", "JIRA_ADD_COMMENT"]
-    )
+    github_tools = build_tools(user_id=user_id, tools=WF6_GITHUB_TOOLS)
+    jira_tools = build_tools(user_id=user_id, tools=WF6_JIRA_TOOLS)
     runtime = Workflow6Runtime(
         Agent=Agent,
         Task=Task,

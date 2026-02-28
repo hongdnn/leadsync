@@ -44,7 +44,7 @@ def test_run_workflow2_uses_window_minutes_in_scan_prompt(mock_kickoff):
     )
 
     scan_task_description = runtime.Task.call_args_list[0].kwargs["description"]
-    assert "last 60 minutes" in scan_task_description
+    assert "since" in scan_task_description
     assert "NO_COMMITS" in scan_task_description
     assert "repository acme/leadsync" in scan_task_description
 

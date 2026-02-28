@@ -10,7 +10,7 @@ from src.workflow1.jira_writeback import (
     build_comment_text,
     build_description_text,
 )
-from src.workflow1.prompt_artifact import attach_prompt_file
+from src.workflow1.prompt_artifact import upload_prompt_to_jira
 
 
 def _tool(name: str, response: object | None = None) -> MagicMock:
@@ -49,18 +49,16 @@ def test_apply_jira_writeback_raises_on_failed_tool_response():
         )
 
 
-def test_attach_prompt_file_raises_when_tool_response_signals_failure(tmp_path):
-    prompt_path = tmp_path / "prompt-LEADS-42.md"
-    prompt_path.write_text("## Task\nBody\n", encoding="utf-8")
+def test_upload_prompt_to_jira_raises_when_tool_response_signals_failure():
     attachment_tool = _tool(
         "JIRA_ADD_ATTACHMENT",
         response={"successful": False, "error": "Issue not found"},
     )
     with pytest.raises(RuntimeError, match="JIRA_ADD_ATTACHMENT failed"):
-        attach_prompt_file(
+        upload_prompt_to_jira(
             tools=[attachment_tool],
             issue_key="LEADS-42",
-            file_path=prompt_path,
+            markdown="## Task\nBody\n",
         )
 
 

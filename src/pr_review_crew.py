@@ -3,28 +3,13 @@
 from typing import Any
 
 from src.shared import CrewRunResult, build_tools, composio_user_id
+from src.tools.tool_registry import WF4_GITHUB_TOOLS
 from src.workflow4.runner import run_workflow4
 
 
 def run_pr_review_crew(payload: dict[str, Any]) -> CrewRunResult:
     """Run PR details generation from code changes."""
     user_id = composio_user_id()
-    github_tools = build_tools(
-        user_id=user_id,
-        tools=[
-            "GITHUB_LIST_PULL_REQUEST_FILES",
-            "GITHUB_LIST_FILES_FOR_A_PULL_REQUEST",
-            "GITHUB_LIST_FILES_ON_A_PULL_REQUEST",
-            "GITHUB_COMPARE_TWO_COMMITS",
-            "GITHUB_COMPARE_COMMITS",
-            "GITHUB_LIST_COMMITS_ON_A_PULL_REQUEST",
-            "GITHUB_LIST_PULL_REQUEST_COMMITS",
-            "GITHUB_GET_A_COMMIT",
-            "GITHUB_GET_A_COMMIT_OBJECT",
-            "GITHUB_UPDATE_A_PULL_REQUEST",
-            "GITHUB_EDIT_A_PULL_REQUEST",
-            "GITHUB_UPDATE_PULL_REQUEST",
-        ],
-    )
+    github_tools = build_tools(user_id=user_id, tools=WF4_GITHUB_TOOLS)
     jira_tools: list[Any] = []
     return run_workflow4(payload=payload, github_tools=github_tools, jira_tools=jira_tools)

@@ -7,17 +7,8 @@ Exports: run_jira_link_crew(payload) -> CrewRunResult
 from typing import Any
 
 from src.shared import CrewRunResult, build_tools, composio_user_id
+from src.tools.tool_registry import WF5_GITHUB_TOOLS, WF5_JIRA_TOOLS
 from src.workflow5.runner import run_workflow5
-
-WF5_JIRA_TOOLS = [
-    "JIRA_GET_ISSUE",
-    "JIRA_ADD_COMMENT",
-    "JIRA_GET_TRANSITIONS",
-    "JIRA_TRANSITION_ISSUE",
-]
-WF5_GITHUB_TOOLS = [
-    "GITHUB_CREATE_AN_ISSUE_COMMENT",
-]
 
 
 def run_jira_link_crew(payload: dict[str, Any]) -> CrewRunResult:
