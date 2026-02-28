@@ -9,6 +9,7 @@ from src.common.tool_helpers import find_tool_by_name
 REQUIRED_SECTIONS = [
     "## Task",
     "## Context",
+    "## Key Files",
     "## Constraints",
     "## Implementation Rules",
     "## Expected Output",
@@ -25,6 +26,7 @@ def normalize_prompt_markdown(
     issue_key: str,
     summary: str,
     gathered_context: str,
+    key_files_markdown: str,
     ruleset_content: str,
 ) -> str:
     """Build required-section markdown from reasoner output with safe fallback."""
@@ -45,6 +47,8 @@ def normalize_prompt_markdown(
         f"- Summary: {summary_text}\n\n"
         "## Context\n"
         f"{context_text}\n\n"
+        "## Key Files\n"
+        f"{key_files_markdown}\n\n"
         "## Constraints\n"
         f"{constraints_text}\n\n"
         "## Implementation Rules\n"

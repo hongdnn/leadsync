@@ -7,6 +7,8 @@ def gather_description(
     tool_names: list[str],
     has_jira_get_issue: bool,
     has_github_tools: bool,
+    repo_owner: str,
+    repo_name: str,
 ) -> str:
     """Build gatherer task prompt text."""
     return (
@@ -16,15 +18,16 @@ def gather_description(
         "Rules:\n"
         f"- JIRA_GET_ISSUE available: {has_jira_get_issue}\n"
         f"- Any GITHUB_* tools available: {has_github_tools}\n"
-        "- If unavailable, do not call Jira read tools and use payload context only.\n"
-        "- If GITHUB tools are available, scan repository context for files/modules that match the "
-        "ticket summary, description, labels, and components.\n"
+        f"- GitHub repository target: {repo_owner}/{repo_name}\n"
+        "- Use GitHub tools to search code/files relevant to summary, description, labels, and components.\n"
+        "- Include recent commits as supporting signal only.\n"
         "Required output:\n"
         "1) Relevant linked/recent Jira issue summary\n"
-        "2) Last 24h main-branch commits related to this issue scope\n"
+        "2) Last 24h main-branch commits related to this issue scope (if found)\n"
         "3) Risks/constraints discovered\n"
         "4) Summary of previous progress from the latest 10 completed same-label tickets\n"
-        "5) 3-8 source files or modules likely impacted, with one-line rationale each\n"
+        "5) 3-8 source files or modules likely impacted as strict lines in this exact format:\n"
+        "   KEY_FILE: <path> | WHY: <one-line rationale> | CONFIDENCE: <high|medium|low>\n"
     )
 
 
@@ -42,16 +45,18 @@ def reason_description(
         "1) One markdown document with these exact sections in order:\n"
         "   - ## Task\n"
         "   - ## Context\n"
+        "   - ## Key Files\n"
         "   - ## Constraints\n"
         "   - ## Implementation Rules\n"
         "   - ## Expected Output\n"
         "2) In the Context section, include a concise summary of previous same-label completed "
         "work so the assignee sees what has already been completed in this development phase.\n"
-        f"3) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
-        f"4) Apply team preference guidance from Google Docs category '{preference_category}':\n"
+        "3) In the Key Files section, include exactly the key files from gatherer output with path, why, and confidence.\n"
+        f"4) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
+        f"5) Apply team preference guidance from Google Docs category '{preference_category}':\n"
         f"{team_preferences}\n"
-        "5) Add implementation output checklist (code/tests/docs)\n"
-        "6) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
+        "6) Add implementation output checklist (code/tests/docs)\n"
+        "7) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
         f"{common_context}"
     )
 

@@ -25,6 +25,8 @@ def build_workflow1_crew(
     has_jira_add_comment: bool,
     has_jira_add_attachment: bool,
     has_github_tools: bool,
+    repo_owner: str,
+    repo_name: str,
 ) -> tuple[Any, Any, Any, list[Any], Any]:
     """Assemble workflow1 agents/tasks/crew objects."""
     gatherer = runtime.Agent(
@@ -32,7 +34,7 @@ def build_workflow1_crew(
         goal="Collect Jira and GitHub context needed to implement the issue correctly.",
         backstory="You are responsible for finding relevant context from Jira and recent commits.",
         verbose=True,
-        tools=tools if has_jira_get_issue else [],
+        tools=tools,
         llm=model,
     )
     reasoner = runtime.Agent(
@@ -56,6 +58,8 @@ def build_workflow1_crew(
             tool_names=sorted(tool_names),
             has_jira_get_issue=has_jira_get_issue,
             has_github_tools=has_github_tools,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
         ),
         expected_output="A structured context summary with commits, related issues, and constraints.",
         agent=gatherer,

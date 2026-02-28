@@ -39,6 +39,21 @@ logger = logging.getLogger(__name__)
 ARTIFACT_DIR = Path("artifacts") / "workflow1"
 
 
+def _merge_tools(*tool_lists: list[Any]) -> list[Any]:
+    """Merge tool lists while preserving first-seen order by tool name."""
+    merged: list[Any] = []
+    seen: set[str] = set()
+    for tool_list in tool_lists:
+        for tool in tool_list:
+            name = getattr(tool, "name", "")
+            dedupe_key = str(name).upper() or str(id(tool))
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            merged.append(tool)
+    return merged
+
+
 def _required_sections() -> list[str]:
     """Return required Workflow 1 markdown headings."""
     return list(REQUIRED_SECTIONS)
@@ -65,8 +80,12 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     """
     Config.require_gemini_api_key()
     model = Config.get_gemini_model()
-    tools = get_agent_tools()
+    jira_tools = get_agent_tools()
+    github_tools = build_tools(user_id=Config.get_composio_user_id(), toolkits=["GITHUB"])
+    tools = _merge_tools(jira_tools, github_tools)
     docs_tools = build_tools(user_id=Config.get_composio_user_id(), toolkits=["GOOGLEDOCS"])
+    repo_owner = Config.require_env("LEADSYNC_GITHUB_REPO_OWNER")
+    repo_name = Config.require_env("LEADSYNC_GITHUB_REPO_NAME")
     runtime = Workflow1Runtime(
         Agent=Agent,
         Task=Task,
@@ -90,4 +109,6 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         docs_tools=docs_tools,
         runtime=runtime,
         logger=logger,
+        repo_owner=repo_owner,
+        repo_name=repo_name,
     )

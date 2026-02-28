@@ -11,6 +11,8 @@ from src.common.tool_helpers import has_tool_prefix, tool_name_set
 from src.shared import CrewRunResult
 from src.workflow1.context import IssueContext, parse_issue_context
 from src.workflow1.crew_build import build_workflow1_crew
+from src.workflow1.key_files import format_key_files_markdown, parse_key_files
+from src.workflow1.ops import persist_workflow1_memory, validate_github_requirements
 from src.workflow1.prompt_artifact import normalize_prompt_markdown
 from src.workflow1.rules import load_ruleset_content
 
@@ -56,6 +58,8 @@ def run_workflow1(
     docs_tools: list[Any],
     runtime: Workflow1Runtime,
     logger: logging.Logger,
+    repo_owner: str,
+    repo_name: str,
 ) -> CrewRunResult:
     """Execute Workflow 1 end-to-end and return normalized crew run result."""
     issue = parse_issue_context(payload)
@@ -65,6 +69,11 @@ def run_workflow1(
     has_jira_add_comment = "JIRA_ADD_COMMENT" in tool_names
     has_jira_add_attachment = "JIRA_ADD_ATTACHMENT" in tool_names
     has_github_tools = has_tool_prefix(tool_names, "GITHUB_")
+    validate_github_requirements(
+        repo_owner=repo_owner,
+        repo_name=repo_name,
+        has_github_tools=has_github_tools,
+    )
     ruleset_file = runtime.select_ruleset_file(issue.labels, issue.component_names)
     ruleset_content = load_ruleset_content(ruleset_file)
     preference_category = runtime.resolve_preference_category(issue.labels, issue.component_names)
@@ -92,6 +101,8 @@ def run_workflow1(
         has_jira_add_comment=has_jira_add_comment,
         has_jira_add_attachment=has_jira_add_attachment,
         has_github_tools=has_github_tools,
+        repo_owner=repo_owner,
+        repo_name=repo_name,
     )
     result, used_model = kickoff_with_model_fallback(
         crew=crew,
@@ -101,42 +112,36 @@ def run_workflow1(
         label="LeadSync",
     )
     gathered = extract_task_output(gather_task)
+    key_files = parse_key_files(gathered)
+    if not key_files:
+        raise RuntimeError(
+            "Workflow 1 GitHub key-file discovery returned no KEY_FILE entries."
+        )
+    key_files_markdown = format_key_files_markdown(key_files)
     reasoned = extract_task_output(reason_task)
     prompt_markdown = normalize_prompt_markdown(
         reasoner_text=reasoned,
         issue_key=issue.issue_key,
         summary=issue.summary,
         gathered_context=gathered,
+        key_files_markdown=key_files_markdown,
         ruleset_content=ruleset_content,
     )
     prompt_path = runtime.write_prompt_file(issue.issue_key, prompt_markdown)
     runtime.attach_prompt_file(tools, issue.issue_key, prompt_path)
-    try:
-        if runtime.memory_enabled():
-            db_path = runtime.build_memory_db_path()
-            runtime.record_event(
-                db_path=db_path,
-                event_type="ticket_enrichment_run",
-                workflow="workflow1",
-                ticket_key=issue.issue_key,
-                project_key=issue.project_key,
-                label=issue.primary_label or None,
-                component=issue.primary_component or None,
-                payload={"ruleset_file": ruleset_file, "model": used_model, "prompt_file": str(prompt_path)},
-            )
-            runtime.record_memory_item(
-                db_path=db_path,
-                workflow="workflow1",
-                item_type="ticket_enrichment",
-                ticket_key=issue.issue_key,
-                project_key=issue.project_key,
-                label=issue.primary_label or None,
-                component=issue.primary_component or None,
-                summary=(issue.summary or f"Technical guidance prepared for {issue.issue_key}").strip(),
-                decision=(reasoned or "No explicit decision text captured.").strip(),
-                rules_applied=ruleset_file,
-                context={"same_label_history": same_label_history, "gathered_context": gathered},
-            )
-    except Exception:
-        logger.exception("Workflow 1 memory persistence failed for issue '%s'.", issue.issue_key)
+    persist_workflow1_memory(
+        runtime=runtime,
+        logger=logger,
+        issue=issue,
+        ruleset_file=ruleset_file,
+        used_model=used_model,
+        prompt_path=prompt_path,
+        reasoned=reasoned,
+        same_label_history=same_label_history,
+        gathered=gathered,
+        key_files_markdown=key_files_markdown,
+        repo_owner=repo_owner,
+        repo_name=repo_name,
+        key_file_count=len(key_files),
+    )
     return CrewRunResult(raw=str(result), model=used_model)

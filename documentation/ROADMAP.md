@@ -25,6 +25,8 @@ Use this file as the live execution board.
 - [x] Decision recorded: Workflow 2 scheduling uses Railway Cron + secured `POST /digest/trigger` (`X-LeadSync-Trigger-Token`) with 60-minute default lookback and SQLite idempotency lock keys to avoid duplicate hourly Slack posts.
 - [x] Decision recorded: Workflow 2 now requires explicit repository targeting (`repo_owner` + `repo_name`) via trigger payload or env fallback (`LEADSYNC_GITHUB_REPO_OWNER`, `LEADSYNC_GITHUB_REPO_NAME`) to avoid ambiguous GitHub-tool prompting during demo runs.
 - [x] Decision recorded: Workflow 2 now emits a guaranteed hourly heartbeat digest line when no meaningful commits are detected, so demo Slack activity remains visible every scheduled run.
+- [x] Decision recorded: Workflow 1 now requires GitHub context during ticket enrichment. Repo targeting uses env vars (`LEADSYNC_GITHUB_REPO_OWNER`, `LEADSYNC_GITHUB_REPO_NAME`), and the attached prompt includes a dedicated `## Key Files` section extracted from GitHub-related-file analysis.
+- [x] Decision recorded: Shared kickoff retry now handles transient empty LLM responses (`Invalid response from LLM call - None or empty.`) with one same-model retry and applies `flash-lite -> flash` fallback for resilient scheduled runs.
 
 ---
 
@@ -58,9 +60,11 @@ Use this file as the live execution board.
 - [x] Prompt structure includes:
   - [x] `## Task`
   - [x] `## Context`
+  - [x] `## Key Files`
   - [x] `## Constraints`
   - [x] `## Implementation Rules`
   - [x] `## Expected Output`
+- [x] Workflow 1 gatherer uses GitHub tools to identify ticket-related key files for the attachment prompt.
 - [x] Jira propagation updates description + adds comment + attaches prompt file.
 - [x] Crew kickoff has try/except with readable logs.
 - [x] Model fallback logic for `-latest` + `NOT_FOUND` is implemented.
@@ -123,7 +127,7 @@ Use this file as the live execution board.
 - [x] `tests/test_slack_crew.py` covers parse + happy path + model fallback.
 - [x] `tests/test_main.py` covers health + all endpoint success/error paths.
 - [x] All tests pass: `pytest -q`.
-- [x] Coverage target met: `pytest --cov=src --cov-report=term-missing -q` >= 60%. (actual: 88%)
+- [x] Coverage target met: `pytest --cov=src --cov-report=term-missing -q` >= 60%. (actual: 92%)
 
 ### Cross-Cut Checks
 - [x] No raw Jira/GitHub/Slack API calls outside Composio.
@@ -203,7 +207,7 @@ Use this file as the live execution board.
 - [ ] Checkpoint A: Local environment + base integrations verified.
 - [ ] Checkpoint B: Workflow 1 production-like behavior verified.
 - [ ] Checkpoint C: All 3 workflows execute without exceptions.
-- [x] Checkpoint D: Tests green with target coverage. (81 tests passing, 85% coverage)
+- [x] Checkpoint D: Tests green with target coverage. (107 tests passing, 92% coverage)
 - [ ] Checkpoint E: Live deploy + external integrations verified.
 - [ ] Checkpoint F: Demo rehearsal complete and stable.
 
@@ -213,6 +217,8 @@ Use this file as the live execution board.
 
 | Date | Owner | Update |
 |------|-------|--------|
+| 2026-02-28 | Dev 2 | Hardened shared crew reliability for transient provider failures: `src/common/model_retry.py` now retries once on empty LLM responses and falls back `flash-lite` to `flash` when needed; added `tests/test_model_retry.py` and revalidated full suite (`pytest -q`: 107 passing). |
+| 2026-02-28 | Dev 1 + Dev 2 | Implemented Workflow 1 GitHub related-file integration: wired GitHub repo env targeting into Jira enrichment runs, merged Jira+GitHub tooling for gatherer context, enforced hard-fail when GitHub context is unavailable, added deterministic key-file extraction contract (`KEY_FILE: ...`), and upgraded prompt artifact requirements with a dedicated `## Key Files` section plus parser tests. |
 | 2026-02-28 | Dev 1 + Dev 2 | Fixed Workflow 2 GitHub targeting ambiguity that caused runtime "provide repository owner and name" responses: added explicit repo target propagation (`repo_owner`/`repo_name`) from `/digest/trigger` payload with env fallback, updated scanner prompt contract, expanded tests, and documented Railway cron env requirements. |
 | 2026-02-28 | Dev 1 + Dev 2 | Finalized demo-hourly digest behavior: Workflow 2 prompt contract now forces explicit no-commit heartbeat output (`AREA: general | SUMMARY: No meaningful commits ...`), quickstart now includes dedicated Slack channel setup/invite flow + manual verification call, and tests were expanded for quiet-hour behavior. |
 | 2026-02-28 | Dev 2 | Finalized agent-scannability refactor after concurrent edits: resolved duplicate helper collisions in `shared.py` and `src/memory/write.py`, preserved Workflow 2 schedule/idempotency interfaces, kept compatibility facades on legacy module paths, and revalidated suite (`pytest -q`: 94 passing, coverage: 92%). |

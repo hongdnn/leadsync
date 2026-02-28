@@ -1,7 +1,35 @@
-"""Crew kickoff retry helper for `-latest` model fallback handling."""
+"""Crew kickoff retry helper for model alias and transient LLM failures."""
 
 import logging
 from typing import Any
+
+
+EMPTY_LLM_RESPONSE_MESSAGE = "Invalid response from LLM call - None or empty."
+
+
+def _is_empty_llm_response_error(exc: Exception) -> bool:
+    """Return True when CrewAI surfaced an empty/None LLM response failure."""
+    return EMPTY_LLM_RESPONSE_MESSAGE in str(exc)
+
+
+def _fallback_model_for_error(model: str, exc: Exception) -> str | None:
+    """
+    Select fallback model for known failure signatures.
+
+    Args:
+        model: Preferred model name.
+        exc: Exception raised by crew kickoff.
+    Returns:
+        Fallback model name when known; otherwise None.
+    """
+    error_text = str(exc)
+    if "-latest" in model and "NOT_FOUND" in error_text:
+        return model.replace("-latest", "")
+    if "flash-lite" in model and (
+        "NOT_FOUND" in error_text or _is_empty_llm_response_error(exc)
+    ):
+        return model.replace("flash-lite", "flash")
+    return None
 
 
 def kickoff_with_model_fallback(
@@ -13,7 +41,7 @@ def kickoff_with_model_fallback(
     label: str,
 ) -> tuple[Any, str]:
     """
-    Run crew kickoff and retry once when latest model alias is missing.
+    Run crew kickoff with targeted retries for known model/runtime failures.
 
     Args:
         crew: CrewAI crew-like object with `kickoff()`.
@@ -28,10 +56,29 @@ def kickoff_with_model_fallback(
         return crew.kickoff(), model
     except Exception as exc:
         logger.exception("%s crew kickoff failed for model '%s'.", label, model)
-        if "-latest" in model and "NOT_FOUND" in str(exc):
-            fallback_model = model.replace("-latest", "")
-            logger.warning("Retrying %s crew with fallback model '%s'.", label, fallback_model)
+        effective_exc = exc
+
+        # Retry once for transient empty LLM responses from provider/tool routing.
+        if _is_empty_llm_response_error(exc):
+            logger.warning(
+                "Retrying %s crew once for transient empty LLM response on model '%s'.",
+                label,
+                model,
+            )
+            try:
+                return crew.kickoff(), model
+            except Exception as retry_exc:
+                logger.exception(
+                    "%s crew retry still failed for model '%s'.", label, model
+                )
+                effective_exc = retry_exc
+
+        fallback_model = _fallback_model_for_error(model, effective_exc)
+        if fallback_model and fallback_model != model:
+            logger.warning(
+                "Retrying %s crew with fallback model '%s'.", label, fallback_model
+            )
             for agent in agents:
                 agent.llm = fallback_model
             return crew.kickoff(), fallback_model
-        raise
+        raise effective_exc

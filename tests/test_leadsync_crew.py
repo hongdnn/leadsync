@@ -29,6 +29,39 @@ def _attachment_tool() -> MagicMock:
     return tool
 
 
+def _github_tool() -> MagicMock:
+    """Build a mock GitHub tool for Workflow 1 GitHub gating."""
+    tool = MagicMock()
+    tool.name = "GITHUB_SEARCH_CODE"
+    return tool
+
+
+def _configure_repo_env(mock_config: MagicMock) -> None:
+    """Set deterministic repo-target env lookups through Config facade mock."""
+    mock_config.require_env.side_effect = lambda name: {
+        "LEADSYNC_GITHUB_REPO_OWNER": "octocat",
+        "LEADSYNC_GITHUB_REPO_NAME": "hello-world",
+    }[name]
+
+
+def _configure_task_outputs(
+    mock_task_cls: MagicMock,
+    *,
+    gather_raw: str = (
+        "Summary context\n"
+        "KEY_FILE: src/auth/routes.py | WHY: Handles login endpoint behavior | CONFIDENCE: high\n"
+    ),
+    reason_raw: str = "Brief suggestion without required headings.",
+) -> None:
+    """Provide deterministic task outputs for gather/reason/propagate tasks."""
+    gather_task = MagicMock()
+    gather_task.output = MagicMock(raw=gather_raw)
+    reason_task = MagicMock()
+    reason_task.output = MagicMock(raw=reason_raw)
+    propagate_task = MagicMock()
+    mock_task_cls.side_effect = [gather_task, reason_task, propagate_task]
+
+
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
@@ -51,6 +84,9 @@ def test_run_leadsync_crew_returns_crew_run_result(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
     mock_write_prompt.return_value = Path("artifacts/workflow1/prompt-LEADS-1.md")
 
@@ -92,6 +128,9 @@ def test_run_leadsync_crew_model_fallback(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash-latest"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
     mock_write_prompt.return_value = Path("artifacts/workflow1/prompt-LEADS-1.md")
 
@@ -133,6 +172,9 @@ def test_run_leadsync_crew_uses_frontend_label(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
     mock_write_prompt.return_value = Path("artifacts/workflow1/prompt-LEADS-2.md")
     mock_crew_instance = MagicMock()
@@ -182,6 +224,9 @@ def test_run_leadsync_crew_empty_payload_defaults(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
     mock_write_prompt.return_value = Path("artifacts/workflow1/prompt-UNKNOWN.md")
     mock_crew_instance = MagicMock()
@@ -217,10 +262,67 @@ def test_run_leadsync_crew_raises_when_google_doc_fetch_fails(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
     mock_get_tools.return_value = []
 
     from src.leadsync_crew import run_leadsync_crew
     with pytest.raises(RuntimeError, match="Google Docs preferences"):
+        run_leadsync_crew(payload=SAMPLE_PAYLOAD)
+
+
+@patch("src.leadsync_crew.Task")
+@patch("src.leadsync_crew.Agent")
+@patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
+@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew.Crew")
+def test_run_leadsync_crew_raises_when_github_tools_missing(
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+):
+    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
+    mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_get_tools.return_value = []
+    _configure_task_outputs(mock_task_cls)
+
+    from src.leadsync_crew import run_leadsync_crew
+    with pytest.raises(RuntimeError, match="requires GitHub tools"):
+        run_leadsync_crew(payload=SAMPLE_PAYLOAD)
+
+
+@patch("src.leadsync_crew.Task")
+@patch("src.leadsync_crew.Agent")
+@patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
+@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew.Crew")
+def test_run_leadsync_crew_raises_when_repo_target_missing(
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+):
+    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
+    mock_config.require_gemini_api_key.return_value = "fake-key"
+    mock_config.require_env.side_effect = RuntimeError("Missing required env var: LEADSYNC_GITHUB_REPO_OWNER")
+    mock_build_tools.return_value = [_github_tool()]
+    mock_get_tools.return_value = []
+    _configure_task_outputs(mock_task_cls)
+
+    from src.leadsync_crew import run_leadsync_crew
+    with pytest.raises(RuntimeError, match="LEADSYNC_GITHUB_REPO_OWNER"):
         run_leadsync_crew(payload=SAMPLE_PAYLOAD)
 
 
@@ -243,18 +345,21 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
     attachment_tool = _attachment_tool()
-    mock_get_tools.return_value = [attachment_tool]
+    mock_get_tools.return_value = [attachment_tool, _github_tool()]
     mock_crew_instance = MagicMock()
     mock_crew_instance.kickoff.return_value = MagicMock()
     mock_crew_cls.return_value = mock_crew_instance
 
-    gather_task = MagicMock()
-    gather_task.output = MagicMock(raw="Existing context from linked tickets.")
-    reason_task = MagicMock()
-    reason_task.output = MagicMock(raw="Brief suggestion without required headings.")
-    propagate_task = MagicMock()
-    mock_task_cls.side_effect = [gather_task, reason_task, propagate_task]
+    _configure_task_outputs(
+        mock_task_cls,
+        gather_raw=(
+            "Existing context from linked tickets.\n"
+            "KEY_FILE: src/auth/service.py | WHY: Core auth flow wiring | CONFIDENCE: high\n"
+        ),
+    )
 
     with patch("src.leadsync_crew.ARTIFACT_DIR", tmp_path):
         from src.leadsync_crew import run_leadsync_crew
@@ -276,6 +381,7 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
     prompt_markdown = prompt_file.read_text(encoding="utf-8")
     assert "## Task" in prompt_markdown
     assert "## Context" in prompt_markdown
+    assert "## Key Files" in prompt_markdown
     assert "## Constraints" in prompt_markdown
     assert "## Implementation Rules" in prompt_markdown
     assert "## Expected Output" in prompt_markdown
@@ -305,6 +411,9 @@ def test_run_leadsync_crew_missing_attachment_tool_raises(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     mock_get_tools.return_value = []
     mock_crew_instance = MagicMock()
     mock_crew_instance.kickoff.return_value = MagicMock()
@@ -335,9 +444,12 @@ def test_run_leadsync_crew_attachment_tool_failure_raises(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
+    _configure_task_outputs(mock_task_cls)
     attachment_tool = _attachment_tool()
     attachment_tool.run.side_effect = Exception("attachment failed")
-    mock_get_tools.return_value = [attachment_tool]
+    mock_get_tools.return_value = [attachment_tool, _github_tool()]
     mock_crew_instance = MagicMock()
     mock_crew_instance.kickoff.return_value = MagicMock()
     mock_crew_cls.return_value = mock_crew_instance
@@ -395,13 +507,20 @@ def test_run_leadsync_crew_records_memory_when_enabled(
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
+    _configure_repo_env(mock_config)
+    mock_build_tools.return_value = [_github_tool()]
     attachment_tool = _attachment_tool()
-    mock_get_tools.return_value = [attachment_tool]
+    mock_get_tools.return_value = [attachment_tool, _github_tool()]
     mock_crew_instance = MagicMock()
     mock_crew_instance.kickoff.return_value = MagicMock()
     mock_crew_cls.return_value = mock_crew_instance
     gather_task = MagicMock()
-    gather_task.output = MagicMock(raw="Gathered context")
+    gather_task.output = MagicMock(
+        raw=(
+            "Gathered context\n"
+            "KEY_FILE: src/api/auth.py | WHY: Auth endpoint routing | CONFIDENCE: high\n"
+        )
+    )
     reason_task = MagicMock()
     reason_task.output = MagicMock(raw="Reasoned output")
     propagate_task = MagicMock()

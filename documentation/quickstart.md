@@ -36,6 +36,8 @@ LEADSYNC_GITHUB_REPO_NAME=...
 Google Docs IDs come from URLs like:
 `https://docs.google.com/document/d/<DOCUMENT_ID>/edit`.
 Ensure the connected Composio account can read all three preference documents.
+Workflow 1 Jira enrichment also requires GitHub repo targeting via
+`LEADSYNC_GITHUB_REPO_OWNER` and `LEADSYNC_GITHUB_REPO_NAME` to produce `## Key Files`.
 
 ## 3. Run the API
 
