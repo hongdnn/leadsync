@@ -21,7 +21,19 @@ GEMINI_API_KEY=...
 # GOOGLE_API_KEY=...
 LEADSYNC_GEMINI_MODEL=gemini/gemini-2.5-flash
 SLACK_CHANNEL_ID=...
+LEADSYNC_FRONTEND_PREFS_DOC_ID=...
+LEADSYNC_BACKEND_PREFS_DOC_ID=...
+LEADSYNC_DATABASE_PREFS_DOC_ID=...
+LEADSYNC_MEMORY_ENABLED=true
+LEADSYNC_MEMORY_DB_PATH=data/leadsync.db
+LEADSYNC_DIGEST_WINDOW_MINUTES=60
+LEADSYNC_DIGEST_IDEMPOTENCY_ENABLED=true
+# Optional but recommended in deploy:
+# LEADSYNC_TRIGGER_TOKEN=replace_with_shared_secret
 ```
+Google Docs IDs come from URLs like:
+`https://docs.google.com/document/d/<DOCUMENT_ID>/edit`.
+Ensure the connected Composio account can read all three preference documents.
 
 ## 3. Run the API
 
@@ -51,6 +63,15 @@ curl -X POST http://127.0.0.1:8000/webhooks/jira \
 curl -X POST http://127.0.0.1:8000/digest/trigger
 ```
 
+Scheduled-style call with explicit window metadata:
+
+```bash
+curl -X POST http://127.0.0.1:8000/digest/trigger \
+  -H "Content-Type: application/json" \
+  -H "X-LeadSync-Trigger-Token: $LEADSYNC_TRIGGER_TOKEN" \
+  -d '{"run_source":"scheduled","window_minutes":60,"bucket_start_utc":"2026-02-28T11:00:00Z"}'
+```
+
 ### Workflow 3: Slack Q&A
 
 JSON test:
@@ -68,4 +89,19 @@ curl -X POST http://127.0.0.1:8000/slack/commands \
   -H "Content-Type: application/x-www-form-urlencoded" \
   --data-urlencode "text=LEADS-1 Should I extend the users table?" \
   --data-urlencode "channel_id=C12345678"
+```
+
+## 5. Railway Hourly Scheduler (Hackathon)
+
+1. Deploy the API service normally (the one running `uvicorn src.main:app`).
+2. Set `LEADSYNC_TRIGGER_TOKEN` in the API service env vars.
+3. Create a Railway Cron service from the same repo.
+4. In the Cron service, set:
+   - `DIGEST_TRIGGER_URL=https://<your-api-domain>/digest/trigger`
+   - `LEADSYNC_TRIGGER_TOKEN=<same-shared-secret>`
+5. Set schedule expression to hourly UTC (recommended offset): `7 * * * *`.
+6. Cron command example:
+
+```bash
+python -c "import json, os, urllib.request; req=urllib.request.Request(os.environ['DIGEST_TRIGGER_URL'], data=json.dumps({'run_source':'scheduled','window_minutes':60}).encode('utf-8'), headers={'Content-Type':'application/json','X-LeadSync-Trigger-Token':os.environ['LEADSYNC_TRIGGER_TOKEN']}, method='POST'); print(urllib.request.urlopen(req, timeout=60).read().decode())"
 ```

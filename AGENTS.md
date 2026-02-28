@@ -30,6 +30,7 @@ leadsync/
 ├── src/
 │   ├── main.py              # FastAPI app + all endpoints
 │   ├── shared.py            # Shared: LLM factory, env helpers, Composio client
+│   ├── memory_store.py      # Shared: SQLite memory read/write/query helpers
 │   ├── leadsync_crew.py     # Workflow 1: Ticket Enrichment
 │   ├── digest_crew.py       # Workflow 2: End-of-Day Digest
 │   └── slack_crew.py        # Workflow 3: Slack Q&A
@@ -89,6 +90,13 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 - `src/shared.py` exports: `_required_env()`, `build_llm()`, `build_tools()`.
 - All crew files import from `shared.py`. Never duplicate these helpers.
 
+### Hybrid Memory (SQLite)
+- Use `src/memory_store.py` for memory only: do not duplicate SQL in crew files.
+- Use env-backed helpers from `shared.py`: `memory_enabled()` and `build_memory_db_path()`.
+- Workflow writes (best-effort): WF1 enrichment summary/decision, WF2 per-area digest rows, WF3 question+answer.
+- Workflow reads: WF3 injects `query_slack_memory_context(...)` output before reasoning.
+- Memory failures must not block primary Jira/Slack flow (log and continue).
+
 ### FastAPI
 - All endpoints in `src/main.py`. No router splitting.
 - Extract payload fields with `.get()` and safe defaults.
@@ -106,6 +114,8 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 | `SLACK_CHANNEL_ID` | Yes (WF2+3) | — |
 | `COMPOSIO_USER_ID` | No | `"default"` |
 | `LEADSYNC_GEMINI_MODEL` | No | `gemini/gemini-2.5-flash` |
+| `LEADSYNC_MEMORY_ENABLED` | No | `"true"` |
+| `LEADSYNC_MEMORY_DB_PATH` | No | `data/leadsync.db` |
 
 `_required_env(name)` in `shared.py` raises `RuntimeError` with a clear message when a required var is absent.
 
@@ -146,7 +156,7 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 - ❌ Two output files per ticket — one `prompt-[ticket-key].md` only
 - ❌ PR webhooks — main branch commits only
 - ❌ Any UI or dashboard
-- ❌ Persistent database
+- ❌ External managed database (keep hackathon scope to local SQLite memory only)
 - ❌ Cron/schedulers — digest is a manual HTTP trigger
 - ❌ More than 3 agents per crew
 - ❌ One mega-crew for multiple workflows

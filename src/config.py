@@ -1,34 +1,34 @@
-import os
+"""Backward-compatible config facade over `src.shared` helpers."""
+
+from src.shared import _required_env, _required_gemini_api_key, build_llm, composio_user_id
 
 
 class Config:
+    """Deprecated shim retained for legacy tests/import paths."""
+
     DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
 
     @staticmethod
     def require_env(name: str) -> str:
-        value = os.getenv(name, "").strip()
-        if not value:
-            raise RuntimeError(f"Missing required env var: {name}")
-        return value
+        """Delegate to shared required env helper."""
+        return _required_env(name)
 
     @staticmethod
     def require_gemini_api_key() -> str:
-        value = os.getenv("GEMINI_API_KEY", "").strip()
-        if value:
-            return value
-        legacy_value = os.getenv("GOOGLE_API_KEY", "").strip()
-        if legacy_value:
-            return legacy_value
-        raise RuntimeError("Missing required env var: GEMINI_API_KEY (or GOOGLE_API_KEY)")
+        """Delegate to shared gemini key helper."""
+        return _required_gemini_api_key()
 
     @staticmethod
     def get_gemini_model() -> str:
-        return os.getenv("LEADSYNC_GEMINI_MODEL", Config.DEFAULT_GEMINI_MODEL)
+        """Delegate to shared model selection."""
+        return build_llm()
 
     @staticmethod
     def get_composio_user_id() -> str:
-        return os.getenv("COMPOSIO_USER_ID", "default")
+        """Delegate to shared composio user id helper."""
+        return composio_user_id()
 
     @staticmethod
     def github_enabled() -> bool:
-        return os.getenv("ENABLE_GITHUB", "false").lower() == "true"
+        """Legacy feature flag retained for backward compatibility."""
+        return False

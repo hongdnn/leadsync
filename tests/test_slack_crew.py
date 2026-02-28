@@ -43,7 +43,10 @@ def test_run_slack_crew_returns_crew_run_result(
     mock_crew_instance.kickoff.return_value = mock_kickoff_result
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
+    with patch(
+        "src.slack_crew.load_preferences_for_category",
+        return_value="# Tech Lead Context\nPrefer async.",
+    ):
         from src.slack_crew import run_slack_crew
         from src.shared import CrewRunResult
         result = run_slack_crew(ticket_key="LEADS-1", question="Use async?")
@@ -77,7 +80,10 @@ def test_run_slack_crew_model_fallback(
     ]
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
+    with patch(
+        "src.slack_crew.load_preferences_for_category",
+        return_value="# Tech Lead Context\nPrefer async.",
+    ):
         from src.slack_crew import run_slack_crew
         result = run_slack_crew(ticket_key="LEADS-1", question="Any concerns?")
 
@@ -90,12 +96,38 @@ def test_run_slack_crew_raises_on_missing_slack_channel(monkeypatch):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
 
-    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
+    with patch(
+        "src.slack_crew.load_preferences_for_category",
+        return_value="# Tech Lead Context\nPrefer async.",
+    ):
         with patch("src.slack_crew.build_tools", return_value=[]):
             with patch("src.slack_crew.build_llm", return_value="gemini/gemini-2.5-flash"):
                 from src.slack_crew import run_slack_crew
                 with pytest.raises(RuntimeError, match="SLACK_CHANNEL_ID"):
                     run_slack_crew(ticket_key="LEADS-1", question="Any concerns?")
+
+
+@patch("src.slack_crew.Task")
+@patch("src.slack_crew.Agent")
+@patch("src.slack_crew.build_tools")
+@patch("src.slack_crew.build_llm")
+@patch("src.slack_crew.Crew")
+def test_run_slack_crew_raises_when_google_doc_fetch_fails(
+    mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls, monkeypatch
+):
+    monkeypatch.setenv("COMPOSIO_USER_ID", "default")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    mock_build_llm.return_value = "gemini/gemini-2.5-flash"
+    mock_build_tools.return_value = []
+
+    with patch(
+        "src.slack_crew.load_preferences_for_category",
+        side_effect=RuntimeError("Failed to fetch Google Docs preferences"),
+    ):
+        from src.slack_crew import run_slack_crew
+        with pytest.raises(RuntimeError, match="Google Docs preferences"):
+            run_slack_crew(ticket_key="LEADS-1", question="Any concerns?")
 
 
 @patch("src.slack_crew.Task")
@@ -116,7 +148,7 @@ def test_retrieve_task_contains_classification_instructions(
     mock_crew_instance.kickoff.return_value = MagicMock(__str__=lambda s: "done")
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.load_preferences", return_value="# Prefs"):
+    with patch("src.slack_crew.load_preferences_for_category", return_value="# Prefs"):
         from src.slack_crew import run_slack_crew
         run_slack_crew(ticket_key="LEADS-1", question="How should I implement this?")
 
@@ -146,7 +178,10 @@ def test_reason_task_contains_conditional_branches(
     mock_crew_instance.kickoff.return_value = MagicMock(__str__=lambda s: "done")
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.load_preferences", return_value="# Prefs\n- Prefer async."):
+    with patch(
+        "src.slack_crew.load_preferences_for_category",
+        return_value="# Prefs\n- Prefer async.",
+    ):
         from src.slack_crew import run_slack_crew
         run_slack_crew(ticket_key="LEADS-1", question="Should I use a new table?")
 
@@ -159,3 +194,79 @@ def test_reason_task_contains_conditional_branches(
     assert "ticket enriched" in desc
     assert "Do NOT reference or apply any tech lead preferences" in desc
     assert "Prefer async" in desc
+
+
+@patch("src.slack_crew.Task")
+@patch("src.slack_crew.Agent")
+@patch("src.slack_crew.build_tools")
+@patch("src.slack_crew.build_llm")
+@patch("src.slack_crew.Crew")
+def test_retrieve_task_includes_memory_context_when_enabled(
+    mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls, monkeypatch
+):
+    monkeypatch.setenv("COMPOSIO_USER_ID", "default")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    mock_build_llm.return_value = "gemini/gemini-2.5-flash"
+    mock_build_tools.return_value = []
+    mock_crew_instance = MagicMock()
+    mock_crew_instance.kickoff.return_value = MagicMock(__str__=lambda s: "done")
+    mock_crew_cls.return_value = mock_crew_instance
+
+    with patch("src.slack_crew.load_preferences_for_category", return_value="# Prefs"):
+        with patch("src.slack_crew.memory_enabled", return_value=True):
+            with patch(
+                "src.slack_crew.load_issue_project_label_component",
+                return_value=("LEADS", "backend", "auth"),
+            ):
+                with patch(
+                    "src.slack_crew.query_slack_memory_context",
+                    return_value="Memory Context\nTicket Memory:\n- Existing item",
+                ):
+                    from src.slack_crew import run_slack_crew
+                    run_slack_crew(ticket_key="LEADS-1", question="How should I implement this?")
+
+    retrieve_call = mock_task_cls.call_args_list[0]
+    desc = retrieve_call[1]["description"]
+    assert "Stored workflow memory context:" in desc
+    assert "Ticket Memory:" in desc
+
+
+@patch("src.slack_crew.Task")
+@patch("src.slack_crew.Agent")
+@patch("src.slack_crew.build_tools")
+@patch("src.slack_crew.build_llm")
+@patch("src.slack_crew.Crew")
+def test_run_slack_crew_records_memory_when_enabled(
+    mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls, monkeypatch
+):
+    monkeypatch.setenv("COMPOSIO_USER_ID", "default")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    mock_build_llm.return_value = "gemini/gemini-2.5-flash"
+    mock_build_tools.return_value = []
+    mock_crew_instance = MagicMock()
+    mock_crew_instance.kickoff.return_value = MagicMock(__str__=lambda s: "done")
+    mock_crew_cls.return_value = mock_crew_instance
+    retrieve_task = MagicMock()
+    retrieve_task.output = MagicMock(raw="QUESTION_TYPE: IMPLEMENTATION")
+    reason_task = MagicMock()
+    reason_task.output = MagicMock(raw="Use request-scoped auth checks.")
+    respond_task = MagicMock()
+    mock_task_cls.side_effect = [retrieve_task, reason_task, respond_task]
+
+    with patch("src.slack_crew.load_preferences_for_category", return_value="# Prefs"):
+        with patch("src.slack_crew.memory_enabled", return_value=True):
+            with patch(
+                "src.slack_crew.load_issue_project_label_component",
+                return_value=("LEADS", "backend", "auth"),
+            ):
+                with patch("src.slack_crew.query_slack_memory_context", return_value="Memory Context"):
+                    with patch("src.slack_crew.build_memory_db_path", return_value=":memory:"):
+                        with patch("src.slack_crew.record_event") as mock_record_event:
+                            with patch("src.slack_crew.record_memory_item") as mock_record_item:
+                                from src.slack_crew import run_slack_crew
+                                run_slack_crew(ticket_key="LEADS-1", question="How to fix auth?")
+
+    assert mock_record_event.called
+    assert mock_record_item.called

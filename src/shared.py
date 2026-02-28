@@ -10,26 +10,20 @@ from typing import Any
 
 DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
 DEFAULT_TOOL_LIMIT = 200
+DEFAULT_MEMORY_DB_PATH = "data/leadsync.db"
+DEFAULT_DIGEST_WINDOW_MINUTES = 60
 
 
 @dataclass
 class CrewRunResult:
     """Return type for all crew run functions."""
+
     raw: str
     model: str
 
 
 def _required_env(name: str) -> str:
-    """
-    Read a required environment variable.
-
-    Args:
-        name: The environment variable name.
-    Returns:
-        The stripped string value.
-    Raises:
-        RuntimeError: If the variable is absent or blank.
-    """
+    """Read a required environment variable or raise RuntimeError."""
     value = os.getenv(name, "").strip()
     if not value:
         raise RuntimeError(f"Missing required env var: {name}")
@@ -37,14 +31,7 @@ def _required_env(name: str) -> str:
 
 
 def _required_gemini_api_key() -> str:
-    """
-    Read the required Gemini API key with legacy fallback support.
-
-    Returns:
-        Gemini API key value.
-    Raises:
-        RuntimeError: If neither GEMINI_API_KEY nor GOOGLE_API_KEY is set.
-    """
+    """Return GEMINI_API_KEY, with GOOGLE_API_KEY legacy fallback."""
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     if gemini_key:
         return gemini_key
@@ -55,37 +42,67 @@ def _required_gemini_api_key() -> str:
 
 
 def build_llm() -> str:
-    """
-    Return the configured Gemini model name.
-
-    Reads LEADSYNC_GEMINI_MODEL from env.
-    Returns:
-        Model name string (e.g. 'gemini/gemini-2.5-flash').
-    Side effects:
-        None.
-    """
+    """Return configured Gemini model name."""
     return os.getenv("LEADSYNC_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
 
-def build_tools(user_id: str, toolkits: list[str], limit: int = DEFAULT_TOOL_LIMIT) -> list[Any]:
-    """
-    Build Composio tool list for CrewAI agents.
+def composio_user_id() -> str:
+    """Return configured Composio user id with default fallback."""
+    return os.getenv("COMPOSIO_USER_ID", "default")
 
-    Args:
-        user_id: Composio user identifier.
-        toolkits: List of toolkit names e.g. ['JIRA', 'SLACK'].
-        limit: Max number of tool definitions returned by Composio.
-    Returns:
-        List of CrewAI-compatible tool objects.
-    Side effects:
-        Sets COMPOSIO_CACHE_DIR env default. Validates COMPOSIO_API_KEY present.
-    Raises:
-        RuntimeError: If COMPOSIO_API_KEY is not set.
-    """
+
+def build_memory_db_path() -> str:
+    """Return configured SQLite path for LeadSync memory."""
+    return os.getenv("LEADSYNC_MEMORY_DB_PATH", DEFAULT_MEMORY_DB_PATH)
+
+
+def build_digest_window_minutes() -> int:
+    """Return configured digest lookback window (positive integer minutes)."""
+    raw_value = os.getenv(
+        "LEADSYNC_DIGEST_WINDOW_MINUTES", str(DEFAULT_DIGEST_WINDOW_MINUTES)
+    ).strip()
+    try:
+        minutes = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Invalid LEADSYNC_DIGEST_WINDOW_MINUTES: expected a positive integer."
+        ) from exc
+    if minutes <= 0:
+        raise RuntimeError(
+            "Invalid LEADSYNC_DIGEST_WINDOW_MINUTES: expected a positive integer."
+        )
+    return minutes
+
+
+def memory_enabled() -> bool:
+    """Return whether memory subsystem is enabled."""
+    value = os.getenv("LEADSYNC_MEMORY_ENABLED", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def digest_idempotency_enabled() -> bool:
+    """Return whether digest idempotency locking is enabled."""
+    value = os.getenv("LEADSYNC_DIGEST_IDEMPOTENCY_ENABLED", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def build_tools(
+    user_id: str,
+    toolkits: list[str] | None = None,
+    *,
+    tools: list[str] | None = None,
+    limit: int = DEFAULT_TOOL_LIMIT,
+) -> list[Any]:
+    """Build Composio tool list for CrewAI agents."""
     _required_env("COMPOSIO_API_KEY")
     os.environ.setdefault("COMPOSIO_CACHE_DIR", ".composio-cache")
     from composio import Composio
     from composio_crewai import CrewAIProvider
 
     composio = Composio(provider=CrewAIProvider())
-    return composio.tools.get(user_id=user_id, toolkits=toolkits, limit=limit)
+    kwargs: dict[str, Any] = {"user_id": user_id, "limit": limit}
+    if toolkits:
+        kwargs["toolkits"] = toolkits
+    if tools:
+        kwargs["tools"] = tools
+    return composio.tools.get(**kwargs)

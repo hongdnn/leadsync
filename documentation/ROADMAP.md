@@ -19,6 +19,10 @@ Use this file as the live execution board.
 - [x] Decision recorded: Workflow 1 same-label historical progress is written in Jira comments only (`### Previous Progress (Same Label)`), not in the description body.
 - [x] Decision recorded: Same-label precedent retrieval window increased from 5 to 10 completed tickets for richer demo context.
 - [x] Decision recorded: Workflow 1 Jira comment/description write-back is now plain-text and technical (no markdown heading markers), focused on implementation guidance rather than ticket-style summarization.
+- [x] Decision recorded: Hybrid SQLite memory layer added for hackathon context continuity. `events` + `memory_items` are now persisted in a lightweight local DB and queried during Slack Q&A; memory failures are best-effort and do not block primary workflow responses.
+- [x] Decision recorded: Tech lead preferences now use Google Docs as the only source of truth. Workflow 1 and Workflow 3 fetch category-specific docs (`frontend`/`backend`/`database`) via Composio GOOGLEDOCS tools on every run; `/slack/prefs` is deprecated.
+- [x] Decision recorded: Agent-scannability cleanup refactor approved. Workflow logic was split into focused subpackages (`src/workflow1`, `src/workflow2`, `src/workflow3`) plus shared internals (`src/common`, `src/memory`) while preserving legacy module entrypoints for compatibility.
+- [x] Decision recorded: Workflow 2 scheduling uses Railway Cron + secured `POST /digest/trigger` (`X-LeadSync-Trigger-Token`) with 60-minute default lookback and SQLite idempotency lock keys to avoid duplicate hourly Slack posts.
 
 ---
 
@@ -92,7 +96,7 @@ Use this file as the live execution board.
 ### Dev 2 (Crew)
 - [x] `src/slack_crew.py` exists and uses 3-agent sequential flow with `verbose=True`.
 - [x] Context retrieval pulls relevant Jira ticket context.
-- [x] Reasoning uses `config/tech-lead-context.md`.
+- [x] Reasoning uses category-specific Google Docs preferences loaded through Composio (`GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT`).
 - [x] Slack response behavior is conditional: factual ticket answers for GENERAL questions, opinionated guidance for IMPLEMENTATION questions.
 - [x] Crew kickoff has try/except with readable logs.
 - [x] Model fallback logic for `-latest` + `NOT_FOUND` is implemented.
@@ -156,38 +160,39 @@ Use this file as the live execution board.
 - [x] Add/extend tests for this behavior.
 
 ### GitHub Intelligence Upgrade (Dev 1 + Dev 2)
-- [ ] Define daily analysis trigger approach.
-- [ ] Implement scheduled daily repository analysis.
-- [ ] Keep on-demand endpoint/command for recent code-change questions.
-- [ ] Reuse Workflow 2 primitives where possible.
-- [ ] Add tests and failure handling for both scheduled and on-demand paths.
+- [x] Define daily analysis trigger approach.
+- [x] Implement scheduled daily repository analysis.
+- [x] Keep on-demand endpoint/command for recent code-change questions.
+- [x] Reuse Workflow 2 primitives where possible.
+- [x] Add tests and failure handling for both scheduled and on-demand paths.
+
+### Hybrid Memory Layer (Dev 1 + Dev 2)
+- [x] Add SQLite-backed memory module with schema bootstrap for `events` and `memory_items`.
+- [x] Persist curated memory writes from Workflow 1 (ticket enrichment), Workflow 2 (digest areas), and Workflow 3 (Slack Q&A).
+- [x] Inject memory query context into Workflow 3 prompts (ticket memory, recent digests, similar prior Q&A by label/component).
+- [x] Add startup memory initialization in FastAPI with best-effort failure handling.
+- [x] Add tests for memory store schema/read/write/query and workflow integration behavior.
 
 ---
 
-## Phase 7 — Tech Lead Preferences System
+## Phase 7 — Tech Lead Preferences (Google Docs Source)
 
 > **Context:** Fast-pace startup environment where developers change seats/departments frequently.
 > The tech lead needs a way to maintain live coding preferences (style, constraints, architectural rules)
 > that are automatically injected into AI responses without editing files on disk.
 
-### Dev 1 (Endpoint)
-- [x] `POST /slack/prefs` endpoint added to `src/main.py`.
-- [x] Handles Slack form-encoded payload (same pattern as `/slack/commands`).
-- [x] Handles `ssl_check=1` correctly.
-- [x] Parses `add <rule text>` command; returns HTTP 400 for empty or missing text.
-- [x] Returns ephemeral Slack response: `"Preference added: {rule_text}"`.
-- [ ] Slack slash command `/leadsync-prefs` points to `<public-url>/slack/prefs`.
+### Dev 1 (Endpoint + Integration)
+- [x] Added required env vars for fixed Google Docs IDs: `LEADSYNC_FRONTEND_PREFS_DOC_ID`, `LEADSYNC_BACKEND_PREFS_DOC_ID`, `LEADSYNC_DATABASE_PREFS_DOC_ID`.
+- [x] Deprecated `POST /slack/prefs` and replaced mutating behavior with HTTP 410 guidance (except Slack `ssl_check=1`).
+- [x] Updated `.env.example` and `documentation/quickstart.md` with Google Docs setup details.
 
 ### Dev 2 (Module + Refactor)
-- [x] `src/prefs.py` created with `load_preferences()` and `append_preference(text)`.
-- [x] `append_preference()` appends bullet under `## Quick Rules (added via Slack)` section.
-- [x] `append_preference()` creates the section if absent.
-- [x] `slack_crew.py` refactored: `_load_tech_lead_context()` replaced with `prefs.load_preferences()`.
-- [x] `slack_crew.py` classifies Slack question intent as `QUESTION_TYPE: IMPLEMENTATION` or `QUESTION_TYPE: GENERAL`.
-- [x] `slack_crew.py` applies preferences only for `IMPLEMENTATION`; `GENERAL` responses stay factual and preference-free.
-- [x] `tests/test_prefs.py` covers load, append-existing-section, append-creates-section.
-- [x] `tests/test_main.py` extended: prefs endpoint success + 400 + ssl_check cases.
-- [x] `tests/test_slack_crew.py` extended for question classification and conditional reason-task branching.
+- [x] Replaced file-based preference loader with Google Docs loader in `src/prefs.py`.
+- [x] Added category resolver (`frontend`/`backend`/`database`) and fixed-env doc ID resolver.
+- [x] Added strict Google Docs plain-text fetch (`GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT`) with hard-fail behavior on missing tool/env/empty result.
+- [x] Integrated category-specific Google Docs preferences into Workflow 1 reasoner prompt generation.
+- [x] Integrated category-specific Google Docs preferences into Workflow 3 implementation guidance path.
+- [x] Updated tests: `test_prefs.py`, `test_leadsync_crew.py`, `test_slack_crew.py`, `test_main.py` for Google Docs source and `/slack/prefs` deprecation.
 
 ---
 
@@ -196,7 +201,7 @@ Use this file as the live execution board.
 - [ ] Checkpoint A: Local environment + base integrations verified.
 - [ ] Checkpoint B: Workflow 1 production-like behavior verified.
 - [ ] Checkpoint C: All 3 workflows execute without exceptions.
-- [x] Checkpoint D: Tests green with target coverage. (51 tests passing, 88% coverage)
+- [x] Checkpoint D: Tests green with target coverage. (81 tests passing, 85% coverage)
 - [ ] Checkpoint E: Live deploy + external integrations verified.
 - [ ] Checkpoint F: Demo rehearsal complete and stable.
 
@@ -206,6 +211,12 @@ Use this file as the live execution board.
 
 | Date | Owner | Update |
 |------|-------|--------|
+| 2026-02-28 | Dev 2 | Finalized agent-scannability refactor after concurrent edits: resolved duplicate helper collisions in `shared.py` and `src/memory/write.py`, preserved Workflow 2 schedule/idempotency interfaces, kept compatibility facades on legacy module paths, and revalidated suite (`pytest -q`: 94 passing, coverage: 92%). |
+| 2026-02-28 | Dev 1 + Dev 2 | Implemented Workflow 2 scheduled digest readiness: added secure trigger support for `POST /digest/trigger` with optional shared token header, configurable digest window (`LEADSYNC_DIGEST_WINDOW_MINUTES`), run metadata (`run_source`, `bucket_start_utc`), SQLite idempotency locks (`idempotency_locks`) to suppress duplicate scheduled buckets, and updated tests/docs (`pytest -q`: 94 passing). |
+| 2026-02-28 | Dev 2 | Implemented agent-scannability cleanup refactor: split oversized workflow files into dedicated subpackages, centralized shared helpers (task-output extraction, model fallback retry, token/tool lookup), split memory internals into `src/memory/*` with `src/memory_store.py` facade, split Jira history/prefs into core + facade modules, and moved FastAPI startup initialization to lifespan; tests remain green (81 passing, 92% coverage). |
+| 2026-02-28 | Dev 1 + Dev 2 | Implemented full Google Docs preference migration: added fixed category doc ID env vars, replaced local file/slash-command preference source with live GOOGLEDOCS fetches in Workflow 1 and 3, deprecated `/slack/prefs` to HTTP 410 guidance, updated quickstart/env docs, and expanded tests (81 passing, 85% coverage). |
+| 2026-02-28 | Dev 2 | Updated `AGENTS.md` to document hybrid SQLite memory usage (shared helper usage, best-effort behavior, env vars) and aligned "what's cut" with current scope (no external managed DB). |
+| 2026-02-28 | Dev 2 | Implemented hybrid SQLite memory layer: added `src/memory_store.py`, wired best-effort memory writes across all workflows, injected query-time memory context into Slack Q&A, added startup DB initialization, and expanded tests (`test_memory_store`, workflow memory integration assertions). |
 | 2026-02-28 | Dev 2 | Refined Workflow 1 Jira write-back instructions to be plain-text and technical (non-markdown, non-meta), added explicit repository file/module targeting guidance when GitHub tools are available, and expanded same-label history context to include completed ticket description excerpts. |
 | 2026-02-28 | Dev 1 | Added `railway.json` with explicit Railpack start command (`uvicorn src.main:app --host 0.0.0.0 --port $PORT`) and `/health` healthcheck to resolve `railway up` auto-detection failure. |
 | 2026-02-28 | Dev 2 | Added minimal backend/frontend/db ruleset template files under `templates/` and improved Workflow 1 ruleset matching to select related rulesets from Jira labels/components; added tests for matching behavior. |

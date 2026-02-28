@@ -1,0 +1,83 @@
+"""Workflow 1 task description builders."""
+
+
+def gather_description(
+    *,
+    common_context: str,
+    tool_names: list[str],
+    has_jira_get_issue: bool,
+    has_github_tools: bool,
+) -> str:
+    """Build gatherer task prompt text."""
+    return (
+        "Gather context for this issue.\n"
+        f"{common_context}\n"
+        f"Available tool names: {tool_names}\n"
+        "Rules:\n"
+        f"- JIRA_GET_ISSUE available: {has_jira_get_issue}\n"
+        f"- Any GITHUB_* tools available: {has_github_tools}\n"
+        "- If unavailable, do not call Jira read tools and use payload context only.\n"
+        "- If GITHUB tools are available, scan repository context for files/modules that match the "
+        "ticket summary, description, labels, and components.\n"
+        "Required output:\n"
+        "1) Relevant linked/recent Jira issue summary\n"
+        "2) Last 24h main-branch commits related to this issue scope\n"
+        "3) Risks/constraints discovered\n"
+        "4) Summary of previous progress from the latest 10 completed same-label tickets\n"
+        "5) 3-8 source files or modules likely impacted, with one-line rationale each\n"
+    )
+
+
+def reason_description(
+    *,
+    ruleset_file: str,
+    ruleset_content: str,
+    preference_category: str,
+    team_preferences: str,
+    common_context: str,
+) -> str:
+    """Build reasoner task prompt text."""
+    return (
+        "From gathered context, generate:\n"
+        "1) One markdown document with these exact sections in order:\n"
+        "   - ## Task\n"
+        "   - ## Context\n"
+        "   - ## Constraints\n"
+        "   - ## Implementation Rules\n"
+        "   - ## Expected Output\n"
+        "2) In the Context section, include a concise summary of previous same-label completed "
+        "work so the assignee sees what has already been completed in this development phase.\n"
+        f"3) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
+        f"4) Apply team preference guidance from Google Docs category '{preference_category}':\n"
+        f"{team_preferences}\n"
+        "5) Add implementation output checklist (code/tests/docs)\n"
+        "6) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
+        f"{common_context}"
+    )
+
+
+def propagate_description(*, tool_names: list[str], has_comment: bool, has_edit: bool, has_attach: bool) -> str:
+    """Build propagator task prompt text."""
+    return (
+        "Write back to Jira:\n"
+        f"Available tool names: {tool_names}\n"
+        f"- JIRA_ADD_COMMENT available: {has_comment}\n"
+        f"- JIRA_EDIT_ISSUE available: {has_edit}\n"
+        f"- JIRA_ADD_ATTACHMENT available: {has_attach}\n"
+        "Rules:\n"
+        "- Always use issue key from context.\n"
+        "- If JIRA_ADD_COMMENT is available, add plain-text technical execution guidance without markdown syntax.\n"
+        "- Comment structure (plain text, no '#', no bullet markers):\n"
+        "  1) One line: 'Previous same-label progress:'\n"
+        "  2) 3-5 short lines of completed technical work from recent same-label tickets.\n"
+        "  3) One line: 'Recommended implementation path for current task:'\n"
+        "  4) 3-5 short lines: concrete steps, likely files/modules, validation checks.\n"
+        "- Only update issue description when JIRA_EDIT_ISSUE is available.\n"
+        "- For issue description updates, write technical execution guidance (approach, code areas, risks, test plan) "
+        "instead of a generic summary.\n"
+        "- For issue description updates, avoid opening like 'This ticket ...' or 'This task ...'.\n"
+        "- Mention that a prompt markdown attachment will be added when available.\n"
+        "- Do NOT write meta/system statements such as 'the ticket has been enriched' or "
+        "'it is now ready for development'. Keep wording developer-facing and concrete.\n"
+        "- Never call any tool that is not listed in available tool names."
+    )

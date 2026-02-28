@@ -1,72 +1,84 @@
 """
 tests/test_prefs.py
-Unit tests for src/prefs.py — tech lead preferences loader and appender.
+Unit tests for src/prefs.py — Google Docs-backed team preferences.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 
-def test_load_preferences_returns_file_content(tmp_path):
-    from src import prefs
-    prefs_file = tmp_path / "tech-lead-context.md"
-    prefs_file.write_text("# Preferences\n- Prefer async.")
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", prefs_file):
-        result = prefs.load_preferences()
-    assert "Prefer async" in result
+def test_resolve_preference_category_frontend_from_label():
+    from src.prefs import resolve_preference_category
+
+    category = resolve_preference_category(labels=["frontend"], component_names=[])
+    assert category == "frontend"
 
 
-def test_load_preferences_raises_runtime_error_when_file_missing(tmp_path):
-    from src import prefs
-    missing = tmp_path / "nonexistent.md"
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", missing):
-        with pytest.raises(RuntimeError, match="preferences file missing"):
-            prefs.load_preferences()
+def test_resolve_preference_category_database_from_component():
+    from src.prefs import resolve_preference_category
+
+    category = resolve_preference_category(labels=[], component_names=["db-migrations"])
+    assert category == "database"
 
 
-def test_append_preference_creates_section_when_absent(tmp_path):
-    from src import prefs
-    prefs_file = tmp_path / "tech-lead-context.md"
-    prefs_file.write_text("# Existing Content\n- Some rule.\n")
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", prefs_file):
-        prefs.append_preference("Always wrap DB calls in transactions")
-    content = prefs_file.read_text()
-    assert "## Quick Rules (added via Slack)" in content
-    assert "Always wrap DB calls in transactions" in content
+def test_resolve_preference_category_defaults_to_backend():
+    from src.prefs import resolve_preference_category
+
+    category = resolve_preference_category(labels=["priority-high"], component_names=["ops"])
+    assert category == "backend"
 
 
-def test_append_preference_adds_to_existing_section(tmp_path):
-    from src import prefs
-    prefs_file = tmp_path / "tech-lead-context.md"
-    prefs_file.write_text(
-        "# Existing Content\n\n## Quick Rules (added via Slack)\n\n- First rule.\n"
-    )
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", prefs_file):
-        prefs.append_preference("Second rule here")
-    content = prefs_file.read_text()
-    assert content.count("## Quick Rules (added via Slack)") == 1
-    assert "Second rule here" in content
+def test_resolve_doc_id_uses_required_env(monkeypatch):
+    from src.prefs import resolve_doc_id
+
+    monkeypatch.setenv("LEADSYNC_BACKEND_PREFS_DOC_ID", "doc-123")
+    assert resolve_doc_id("backend") == "doc-123"
 
 
-def test_append_preference_does_not_duplicate_section_header(tmp_path):
-    from src import prefs
-    prefs_file = tmp_path / "tech-lead-context.md"
-    prefs_file.write_text(
-        "## Quick Rules (added via Slack)\n\n- Rule one.\n"
-    )
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", prefs_file):
-        prefs.append_preference("Rule two")
-        prefs.append_preference("Rule three")
-    content = prefs_file.read_text()
-    assert content.count("## Quick Rules (added via Slack)") == 1
-    assert "Rule two" in content
-    assert "Rule three" in content
+def test_resolve_doc_id_raises_for_missing_env(monkeypatch):
+    from src.prefs import resolve_doc_id
+
+    monkeypatch.delenv("LEADSYNC_FRONTEND_PREFS_DOC_ID", raising=False)
+    with pytest.raises(RuntimeError, match="LEADSYNC_FRONTEND_PREFS_DOC_ID"):
+        resolve_doc_id("frontend")
 
 
-def test_append_preference_raises_on_empty_text(tmp_path):
-    from src import prefs
-    prefs_file = tmp_path / "tech-lead-context.md"
-    prefs_file.write_text("# Content\n")
-    with patch("src.prefs.TECH_LEAD_CONTEXT_PATH", prefs_file):
-        with pytest.raises(ValueError, match="empty"):
-            prefs.append_preference("   ")
+def test_load_preferences_for_category_reads_google_doc_plaintext(monkeypatch):
+    from src.prefs import load_preferences_for_category
+
+    monkeypatch.setenv("LEADSYNC_DATABASE_PREFS_DOC_ID", "db-doc-1")
+    tool = MagicMock()
+    tool.name = "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+    tool.run.return_value = {"plain_text": "Prefer additive migrations.\nAlways write rollback."}
+
+    result = load_preferences_for_category(category="database", docs_tools=[tool])
+
+    tool.run.assert_called_once_with(document_id="db-doc-1")
+    assert "Prefer additive migrations" in result
+
+
+def test_load_preferences_for_category_raises_when_tool_missing(monkeypatch):
+    from src.prefs import load_preferences_for_category
+
+    monkeypatch.setenv("LEADSYNC_BACKEND_PREFS_DOC_ID", "be-doc-1")
+    with pytest.raises(RuntimeError, match="GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"):
+        load_preferences_for_category(category="backend", docs_tools=[])
+
+
+def test_load_preferences_for_category_raises_on_empty_doc_text(monkeypatch):
+    from src.prefs import load_preferences_for_category
+
+    monkeypatch.setenv("LEADSYNC_FRONTEND_PREFS_DOC_ID", "fe-doc-1")
+    tool = MagicMock()
+    tool.name = "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+    tool.run.return_value = {"plain_text": "   "}
+
+    with pytest.raises(RuntimeError, match="empty"):
+        load_preferences_for_category(category="frontend", docs_tools=[tool])
+
+
+def test_append_preference_is_deprecated():
+    from src.prefs import append_preference
+
+    with pytest.raises(RuntimeError, match="deprecated"):
+        append_preference("any")

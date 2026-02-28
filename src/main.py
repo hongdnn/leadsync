@@ -4,22 +4,43 @@ FastAPI application — all endpoints for LeadSync.
 Endpoints: GET /health, POST /webhooks/jira, POST /digest/trigger, POST /slack/commands, POST /slack/prefs
 """
 
+from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import parse_qs
 import logging
+import os
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
 from src.leadsync_crew import run_leadsync_crew
-from src.prefs import append_preference
+from src.memory_store import init_memory_db
+from src.shared import build_memory_db_path, memory_enabled
 from src.slack_crew import parse_slack_text, run_slack_crew
 
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-app = FastAPI(title="LeadSync")
+def initialize_memory() -> None:
+    """Initialize SQLite memory schema at app startup (best-effort)."""
+    if not memory_enabled():
+        logger.info("LeadSync memory disabled via LEADSYNC_MEMORY_ENABLED.")
+        return
+    try:
+        init_memory_db(build_memory_db_path())
+    except Exception:
+        logger.exception("Failed to initialize LeadSync memory store.")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """FastAPI lifespan hook for startup/shutdown side effects."""
+    initialize_memory()
+    yield
+
+
+app = FastAPI(title="LeadSync", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -51,7 +72,7 @@ def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
 
 
 @app.post("/digest/trigger")
-def digest_trigger() -> dict[str, str]:
+async def digest_trigger(request: Request) -> dict[str, str]:
     """
     Trigger Workflow 2: End-of-Day Digest.
 
@@ -59,10 +80,22 @@ def digest_trigger() -> dict[str, str]:
         Status, model, and raw crew result.
     Raises:
         HTTPException 400: Missing env vars.
+        HTTPException 401: Missing/invalid scheduler token.
         HTTPException 500: Crew failure.
     """
+    _verify_digest_trigger_token(request)
+    payload = await _parse_optional_json_body(request)
+    run_source = str(payload.get("run_source", "manual")).strip().lower() or "manual"
+    if run_source not in {"manual", "scheduled"}:
+        raise HTTPException(status_code=400, detail="run_source must be 'manual' or 'scheduled'.")
+    bucket_start_utc = str(payload.get("bucket_start_utc", "")).strip() or None
+    window_minutes = _coerce_window_minutes(payload.get("window_minutes"))
     try:
-        result = run_digest_crew()
+        result = run_digest_crew(
+            window_minutes=window_minutes,
+            run_source=run_source,
+            bucket_start_utc=bucket_start_utc,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -155,48 +188,30 @@ async def slack_command(
 @app.post("/slack/prefs")
 async def slack_prefs(request: Request) -> dict[str, str]:
     """
-    Handle /leadsync-prefs Slack slash command to append team preferences.
+    Deprecated endpoint for legacy /leadsync-prefs slash command.
 
-    Accepts Slack application/x-www-form-urlencoded payload.
-    Supported command: add <rule text>
+    Accepts Slack application/x-www-form-urlencoded payload and returns
+    deprecation guidance to use Google Docs as the single preference source.
 
     Args:
         request: FastAPI Request for content-type handling.
     Returns:
-        Ephemeral Slack response confirming the preference was added.
+        `{"status":"ok"}` for Slack ssl_check probes.
     Raises:
-        HTTPException 400: If text is empty or command is not 'add'.
+        HTTPException 410: Endpoint has been retired.
     """
     raw_body = await request.body()
     form_data = parse_qs(raw_body.decode("utf-8"))
 
     if form_data.get("ssl_check", [""])[0].strip() == "1":
         return {"status": "ok"}
-
-    text = form_data.get("text", [""])[0].strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Slack 'text' field is empty.")
-
-    if not text.lower().startswith("add "):
-        raise HTTPException(
-            status_code=400,
-            detail="Unknown command. Usage: /leadsync-prefs add <rule text>",
-        )
-
-    rule_text = text[4:].strip()
-    if not rule_text:
-        raise HTTPException(status_code=400, detail="Rule text cannot be empty.")
-
-    try:
-        append_preference(rule_text)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Preference write failed: {exc}") from exc
-    return {
-        "response_type": "ephemeral",
-        "text": f"Preference added: {rule_text}",
-    }
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "The /slack/prefs endpoint is deprecated. "
+            "Update team preferences in the linked Google Docs files."
+        ),
+    )
 
 
 def _run_slack_crew_background(
@@ -215,3 +230,65 @@ def _run_slack_crew_background(
         )
     except Exception:
         logger.exception("Background slack crew run failed for %s.", ticket_key)
+
+
+def _verify_digest_trigger_token(request: Request) -> None:
+    """
+    Validate optional digest trigger token for scheduled invocations.
+
+    Args:
+        request: Incoming FastAPI request.
+    Raises:
+        HTTPException 401: When configured token is missing or incorrect.
+    """
+    expected = os.getenv("LEADSYNC_TRIGGER_TOKEN", "").strip()
+    if not expected:
+        return
+    provided = request.headers.get("X-LeadSync-Trigger-Token", "").strip()
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized digest trigger.")
+
+
+async def _parse_optional_json_body(request: Request) -> dict[str, Any]:
+    """
+    Parse optional JSON body for endpoints that also allow an empty payload.
+
+    Args:
+        request: Incoming FastAPI request.
+    Returns:
+        Parsed JSON dict or empty dict when body is absent.
+    Raises:
+        HTTPException 400: If non-empty body cannot be parsed as JSON object.
+    """
+    body = await request.body()
+    if not body:
+        return {}
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object.")
+    return payload
+
+
+def _coerce_window_minutes(value: Any) -> int | None:
+    """
+    Convert optional window value to positive int.
+
+    Args:
+        value: Raw JSON value from request.
+    Returns:
+        Parsed positive integer, or None when not provided.
+    Raises:
+        HTTPException 400: When provided value is not a positive integer.
+    """
+    if value is None:
+        return None
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="window_minutes must be a positive integer.") from exc
+    if minutes <= 0:
+        raise HTTPException(status_code=400, detail="window_minutes must be a positive integer.")
+    return minutes

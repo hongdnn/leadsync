@@ -40,6 +40,9 @@ htmlcov/
 # Logs
 *.log
 
+# Local runtime data
+data/
+
 # Worktrees
 .worktrees/
 

@@ -32,6 +32,8 @@ def _attachment_tool() -> MagicMock:
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
@@ -41,6 +43,8 @@ def test_run_leadsync_crew_returns_crew_run_result(
     mock_attach_prompt,
     mock_crew_cls,
     mock_config,
+    mock_load_prefs,
+    mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
@@ -69,6 +73,8 @@ def test_run_leadsync_crew_returns_crew_run_result(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
@@ -78,6 +84,8 @@ def test_run_leadsync_crew_model_fallback(
     mock_attach_prompt,
     mock_crew_cls,
     mock_config,
+    mock_load_prefs,
+    mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
@@ -106,6 +114,8 @@ def test_run_leadsync_crew_model_fallback(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
@@ -115,6 +125,8 @@ def test_run_leadsync_crew_uses_frontend_label(
     mock_attach_prompt,
     mock_crew_cls,
     mock_config,
+    mock_load_prefs,
+    mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
@@ -151,6 +163,8 @@ def test_run_leadsync_crew_uses_frontend_label(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 @patch("src.leadsync_crew._attach_prompt_file")
@@ -160,6 +174,8 @@ def test_run_leadsync_crew_empty_payload_defaults(
     mock_attach_prompt,
     mock_crew_cls,
     mock_config,
+    mock_load_prefs,
+    mock_build_tools,
     mock_get_tools,
     mock_agent_cls,
     mock_task_cls,
@@ -183,10 +199,47 @@ def test_run_leadsync_crew_empty_payload_defaults(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch(
+    "src.leadsync_crew.load_preferences_for_category",
+    side_effect=RuntimeError("Failed to fetch Google Docs preferences"),
+)
+@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew.Crew")
+def test_run_leadsync_crew_raises_when_google_doc_fetch_fails(
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+):
+    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
+    mock_config.require_gemini_api_key.return_value = "fake-key"
+    mock_get_tools.return_value = []
+
+    from src.leadsync_crew import run_leadsync_crew
+    with pytest.raises(RuntimeError, match="Google Docs preferences"):
+        run_leadsync_crew(payload=SAMPLE_PAYLOAD)
+
+
+@patch("src.leadsync_crew.Task")
+@patch("src.leadsync_crew.Agent")
+@patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
-    mock_crew_cls, mock_config, mock_get_tools, mock_agent_cls, mock_task_cls, tmp_path
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+    tmp_path,
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
@@ -213,6 +266,7 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
     assert "latest 10 completed same-label tickets" in gather_desc
     assert "source files or modules likely impacted" in gather_desc
     assert "same-label completed work" in reason_desc
+    assert "Google Docs category" in reason_desc
     assert "technical execution guidance" in propagate_desc
     assert "without markdown syntax" in propagate_desc
     assert "This ticket" in propagate_desc
@@ -235,10 +289,19 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_missing_attachment_tool_raises(
-    mock_crew_cls, mock_config, mock_get_tools, mock_agent_cls, mock_task_cls, tmp_path
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+    tmp_path,
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
@@ -256,10 +319,19 @@ def test_run_leadsync_crew_missing_attachment_tool_raises(
 @patch("src.leadsync_crew.Task")
 @patch("src.leadsync_crew.Agent")
 @patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
 @patch("src.leadsync_crew.Config")
 @patch("src.leadsync_crew.Crew")
 def test_run_leadsync_crew_attachment_tool_failure_raises(
-    mock_crew_cls, mock_config, mock_get_tools, mock_agent_cls, mock_task_cls, tmp_path
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+    tmp_path,
 ):
     mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
     mock_config.require_gemini_api_key.return_value = "fake-key"
@@ -302,3 +374,46 @@ def test_select_ruleset_file_defaults_to_backend():
 
     selected = _select_ruleset_file(labels=["priority-high"], component_names=["ops"])
     assert selected == "backend-ruleset.md"
+
+
+@patch("src.leadsync_crew.Task")
+@patch("src.leadsync_crew.Agent")
+@patch("src.leadsync_crew.get_agent_tools")
+@patch("src.leadsync_crew.build_tools", return_value=[])
+@patch("src.leadsync_crew.load_preferences_for_category", return_value="# Prefs\n- Keep APIs thin.")
+@patch("src.leadsync_crew.Config")
+@patch("src.leadsync_crew.Crew")
+def test_run_leadsync_crew_records_memory_when_enabled(
+    mock_crew_cls,
+    mock_config,
+    mock_load_prefs,
+    mock_build_tools,
+    mock_get_tools,
+    mock_agent_cls,
+    mock_task_cls,
+    tmp_path,
+):
+    mock_config.get_gemini_model.return_value = "gemini/gemini-2.5-flash"
+    mock_config.require_gemini_api_key.return_value = "fake-key"
+    attachment_tool = _attachment_tool()
+    mock_get_tools.return_value = [attachment_tool]
+    mock_crew_instance = MagicMock()
+    mock_crew_instance.kickoff.return_value = MagicMock()
+    mock_crew_cls.return_value = mock_crew_instance
+    gather_task = MagicMock()
+    gather_task.output = MagicMock(raw="Gathered context")
+    reason_task = MagicMock()
+    reason_task.output = MagicMock(raw="Reasoned output")
+    propagate_task = MagicMock()
+    mock_task_cls.side_effect = [gather_task, reason_task, propagate_task]
+
+    with patch("src.leadsync_crew.memory_enabled", return_value=True):
+        with patch("src.leadsync_crew.build_memory_db_path", return_value=":memory:"):
+            with patch("src.leadsync_crew.record_event") as mock_record_event:
+                with patch("src.leadsync_crew.record_memory_item") as mock_record_item:
+                    with patch("src.leadsync_crew.ARTIFACT_DIR", tmp_path):
+                        from src.leadsync_crew import run_leadsync_crew
+                        run_leadsync_crew(payload=SAMPLE_PAYLOAD)
+
+    assert mock_record_event.called
+    assert mock_record_item.called

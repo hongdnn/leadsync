@@ -102,3 +102,23 @@ def test_load_issue_project_and_label_from_get_issue_tool():
     )
     assert project_key == "LEADS"
     assert label == "backend"
+
+
+def test_load_issue_project_label_component_from_get_issue_tool():
+    from src.jira_history import load_issue_project_label_component
+
+    issue_tool = MagicMock()
+    issue_tool.name = "JIRA_GET_ISSUE"
+    issue_tool.run.return_value = {
+        "fields": {
+            "project": {"key": "LEADS"},
+            "labels": ["backend"],
+            "components": [{"name": "auth"}],
+        }
+    }
+    project_key, label, component = load_issue_project_label_component(
+        tools=[issue_tool], issue_key="LEADS-1"
+    )
+    assert project_key == "LEADS"
+    assert label == "backend"
+    assert component == "auth"

@@ -1,7 +1,8 @@
+"""Workflow 1 Jira tool bootstrap helpers."""
+
 from typing import Any
 
-from src.config import Config
-from src.integrations.composio_provider import get_composio_tools
+from src.shared import build_tools, composio_user_id
 
 REQUIRED_JIRA_TOOLS = [
     "JIRA_GET_ISSUE",
@@ -13,10 +14,8 @@ REQUIRED_JIRA_TOOLS = [
 
 
 def get_agent_tools() -> list[Any]:
-    # Request Jira tools explicitly to avoid truncated/default toolkit tool lists.
-    toolkits = ["GITHUB"] if Config.github_enabled() else None
-    return get_composio_tools(
-        user_id=Config.get_composio_user_id(),
+    """Return Workflow 1 tool list with explicit required Jira actions."""
+    return build_tools(
+        user_id=composio_user_id(),
         tools=REQUIRED_JIRA_TOOLS,
-        toolkits=toolkits,
     )

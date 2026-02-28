@@ -61,6 +61,61 @@ def test_build_llm_returns_custom_model(monkeypatch):
     assert build_llm() == "gemini/gemini-1.5-pro"
 
 
+def test_build_memory_db_path_returns_default(monkeypatch):
+    monkeypatch.delenv("LEADSYNC_MEMORY_DB_PATH", raising=False)
+    from src.shared import build_memory_db_path, DEFAULT_MEMORY_DB_PATH
+    assert build_memory_db_path() == DEFAULT_MEMORY_DB_PATH
+
+
+def test_build_memory_db_path_returns_custom(monkeypatch):
+    monkeypatch.setenv("LEADSYNC_MEMORY_DB_PATH", "tmp/test.db")
+    from src.shared import build_memory_db_path
+    assert build_memory_db_path() == "tmp/test.db"
+
+
+def test_build_digest_window_minutes_defaults_to_60(monkeypatch):
+    monkeypatch.delenv("LEADSYNC_DIGEST_WINDOW_MINUTES", raising=False)
+    from src.shared import build_digest_window_minutes
+    assert build_digest_window_minutes() == 60
+
+
+def test_build_digest_window_minutes_returns_custom_value(monkeypatch):
+    monkeypatch.setenv("LEADSYNC_DIGEST_WINDOW_MINUTES", "120")
+    from src.shared import build_digest_window_minutes
+    assert build_digest_window_minutes() == 120
+
+
+def test_build_digest_window_minutes_raises_for_invalid(monkeypatch):
+    monkeypatch.setenv("LEADSYNC_DIGEST_WINDOW_MINUTES", "zero")
+    from src.shared import build_digest_window_minutes
+    with pytest.raises(RuntimeError, match="LEADSYNC_DIGEST_WINDOW_MINUTES"):
+        build_digest_window_minutes()
+
+
+def test_memory_enabled_defaults_true(monkeypatch):
+    monkeypatch.delenv("LEADSYNC_MEMORY_ENABLED", raising=False)
+    from src.shared import memory_enabled
+    assert memory_enabled() is True
+
+
+def test_memory_enabled_false_values(monkeypatch):
+    monkeypatch.setenv("LEADSYNC_MEMORY_ENABLED", "false")
+    from src.shared import memory_enabled
+    assert memory_enabled() is False
+
+
+def test_digest_idempotency_enabled_defaults_true(monkeypatch):
+    monkeypatch.delenv("LEADSYNC_DIGEST_IDEMPOTENCY_ENABLED", raising=False)
+    from src.shared import digest_idempotency_enabled
+    assert digest_idempotency_enabled() is True
+
+
+def test_digest_idempotency_enabled_false_values(monkeypatch):
+    monkeypatch.setenv("LEADSYNC_DIGEST_IDEMPOTENCY_ENABLED", "off")
+    from src.shared import digest_idempotency_enabled
+    assert digest_idempotency_enabled() is False
+
+
 def test_build_tools_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("COMPOSIO_API_KEY", raising=False)
     from src.shared import build_tools
