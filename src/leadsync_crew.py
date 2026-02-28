@@ -6,6 +6,7 @@ Exports: run_leadsync_crew(payload) -> CrewRunResult
 
 import logging
 from pathlib import Path
+import re
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
@@ -15,6 +16,7 @@ from src.shared import CrewRunResult
 from src.tools.jira_tools import get_agent_tools
 
 logger = logging.getLogger(__name__)
+ARTIFACT_DIR = Path("artifacts") / "workflow1"
 
 
 def _tool_name_set(tools: list[Any]) -> set[str]:
@@ -22,7 +24,229 @@ def _tool_name_set(tools: list[Any]) -> set[str]:
 
 
 def _safe_dict(value: Any) -> dict[str, Any]:
+    """Return value when dict-like, otherwise return empty dict."""
     return value if isinstance(value, dict) else {}
+
+
+def _required_sections() -> list[str]:
+    """
+    Return required Workflow 1 markdown sections.
+
+    Returns:
+        Ordered section headings required by the roadmap.
+    """
+    return [
+        "## Task",
+        "## Context",
+        "## Constraints",
+        "## Implementation Rules",
+        "## Expected Output",
+    ]
+
+
+def _has_required_sections(markdown: str) -> bool:
+    """
+    Check whether markdown includes all required section headings.
+
+    Args:
+        markdown: Candidate markdown content.
+    Returns:
+        True when all required headings exist.
+    """
+    return all(section in markdown for section in _required_sections())
+
+
+def _extract_task_output(task: Task) -> str:
+    """
+    Read task output text from a CrewAI Task.
+
+    Args:
+        task: CrewAI Task instance.
+    Returns:
+        Extracted text output, or empty string when unavailable.
+    """
+    output = getattr(task, "output", None)
+    if output is None:
+        return ""
+    if isinstance(output, str):
+        return output.strip()
+    raw = getattr(output, "raw", None)
+    if isinstance(raw, str):
+        return raw.strip()
+    result = getattr(output, "result", None)
+    if isinstance(result, str):
+        return result.strip()
+    return ""
+
+
+def _normalize_tokens(values: list[str]) -> list[str]:
+    """
+    Normalize labels/components into lowercase matching tokens.
+
+    Args:
+        values: Raw label or component values.
+    Returns:
+        Flattened token list for robust matching.
+    """
+    tokens: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        lowered = value.lower().strip()
+        if not lowered:
+            continue
+        tokens.append(lowered)
+        tokens.extend(token for token in re.split(r"[^a-z0-9]+", lowered) if token)
+    return tokens
+
+
+def _select_ruleset_file(labels: list[str], component_names: list[str]) -> str:
+    """
+    Select ruleset file based on Jira labels/components.
+
+    Args:
+        labels: Jira label values.
+        component_names: Jira component names.
+    Returns:
+        Ruleset file name under templates/.
+    """
+    category_map: list[tuple[str, set[str]]] = [
+        ("frontend-ruleset.md", {"frontend", "front", "ui", "ux", "fe", "client", "react"}),
+        ("db-ruleset.md", {"database", "db", "sql", "schema", "migration", "postgres"}),
+        ("backend-ruleset.md", {"backend", "back", "api", "service", "be", "server"}),
+    ]
+    tokens = _normalize_tokens(labels) + _normalize_tokens(component_names)
+    for file_name, keywords in category_map:
+        if any(token in keywords for token in tokens):
+            return file_name
+    return "backend-ruleset.md"
+
+
+def _normalize_prompt_markdown(
+    reasoner_text: str,
+    issue_key: str,
+    summary: str,
+    gathered_context: str,
+    ruleset_content: str,
+) -> str:
+    """
+    Ensure generated prompt markdown has the required section structure.
+
+    Args:
+        reasoner_text: Raw text produced by the reasoner task.
+        issue_key: Jira issue key.
+        summary: Issue summary line.
+        gathered_context: Gatherer task output text.
+        ruleset_content: Label-mapped ruleset markdown.
+    Returns:
+        Markdown string containing all required headings.
+    """
+    if reasoner_text and _has_required_sections(reasoner_text):
+        return reasoner_text.strip() + "\n"
+
+    summary_text = summary.strip() or "No summary provided."
+    context_text = gathered_context.strip() or "No additional context gathered."
+    constraints_text = (
+        "- Stay aligned with Jira scope and linked context.\n"
+        "- Keep output paste-ready for the assignee.\n"
+        "- Follow repository standards and existing patterns."
+    )
+    rules_text = ruleset_content.strip() or "- No ruleset content found; use backend defaults."
+    expected_output_text = (
+        reasoner_text.strip()
+        or "Provide an implementation-ready prompt with code, tests, and docs checklist."
+    )
+
+    return (
+        "## Task\n"
+        f"- Ticket: {issue_key}\n"
+        f"- Summary: {summary_text}\n\n"
+        "## Context\n"
+        f"{context_text}\n\n"
+        "## Constraints\n"
+        f"{constraints_text}\n\n"
+        "## Implementation Rules\n"
+        f"{rules_text}\n\n"
+        "## Expected Output\n"
+        f"{expected_output_text}\n"
+    )
+
+
+def _safe_issue_key_for_filename(issue_key: str) -> str:
+    """
+    Sanitize issue key for safe filesystem usage.
+
+    Args:
+        issue_key: Jira issue key from payload.
+    Returns:
+        Safe key for filename usage.
+    """
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", issue_key or "UNKNOWN")
+
+
+def _write_prompt_file(issue_key: str, markdown: str) -> Path:
+    """
+    Persist prompt markdown artifact to disk.
+
+    Args:
+        issue_key: Jira issue key.
+        markdown: Prompt markdown content.
+    Returns:
+        Absolute path to the written markdown file.
+    Side effects:
+        Creates artifact directory and writes prompt file.
+    """
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_key = _safe_issue_key_for_filename(issue_key)
+    prompt_path = ARTIFACT_DIR / f"prompt-{safe_key}.md"
+    prompt_path.write_text(markdown, encoding="utf-8")
+    return prompt_path.resolve()
+
+
+def _find_tool_by_name(tools: list[Any], name: str) -> Any | None:
+    """
+    Find first tool by exact uppercased name.
+
+    Args:
+        tools: List of CrewAI-compatible tools.
+        name: Tool name to locate.
+    Returns:
+        Tool object when found, else None.
+    """
+    expected = name.upper()
+    for tool in tools:
+        if getattr(tool, "name", "").upper() == expected:
+            return tool
+    return None
+
+
+def _attach_prompt_file(tools: list[Any], issue_key: str, file_path: Path) -> Any:
+    """
+    Attach a local markdown prompt file to a Jira issue via Composio.
+
+    Args:
+        tools: Composio tools available for Workflow 1.
+        issue_key: Jira issue key.
+        file_path: Local prompt file path.
+    Returns:
+        Raw tool response.
+    Raises:
+        RuntimeError: If attachment tool is unavailable.
+        Exception: Any attachment call failure.
+    """
+    attachment_tool = _find_tool_by_name(tools, "JIRA_ADD_ATTACHMENT")
+    if attachment_tool is None:
+        raise RuntimeError("JIRA_ADD_ATTACHMENT tool is required for Workflow 1.")
+
+    resolved_path = file_path.resolve()
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"Prompt file not found for attachment: {resolved_path}")
+
+    return attachment_tool.run(
+        issue_key=issue_key,
+        local_file_path=str(resolved_path),
+        file_to_upload=str(resolved_path),
+    )
 
 
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
@@ -47,6 +271,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     has_jira_get_issue = "JIRA_GET_ISSUE" in tool_names
     has_jira_edit_issue = "JIRA_EDIT_ISSUE" in tool_names
     has_jira_add_comment = "JIRA_ADD_COMMENT" in tool_names
+    has_jira_add_attachment = "JIRA_ADD_ATTACHMENT" in tool_names
 
     issue = _safe_dict(payload.get("issue"))
     if not issue:
@@ -79,13 +304,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         components = []
     component_names = [c.get("name", "") for c in components if isinstance(c, dict)]
 
-    label = labels[0] if labels else "backend"
-    ruleset_map = {
-        "backend": "backend-ruleset.md",
-        "frontend": "frontend-ruleset.md",
-        "database": "db-ruleset.md",
-    }
-    ruleset_file = ruleset_map.get(label, "backend-ruleset.md")
+    ruleset_file = _select_ruleset_file(labels=labels, component_names=component_names)
     ruleset_path = Path(__file__).parent.parent / "templates" / ruleset_file
     ruleset_content = ruleset_path.read_text(encoding="utf-8") if ruleset_path.exists() else ""
 
@@ -153,13 +372,18 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     reason_task = Task(
         description=(
             "From gathered context, generate:\n"
-            "1) Personalized AI prompt for the assignee\n"
-            f"2) Label-based rules from the ruleset below:\n{ruleset_content}\n"
+            "1) One markdown document with these exact sections in order:\n"
+            "   - ## Task\n"
+            "   - ## Context\n"
+            "   - ## Constraints\n"
+            "   - ## Implementation Rules\n"
+            "   - ## Expected Output\n"
+            f"2) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
             "3) Implementation output checklist (code/tests/docs)\n"
             f"{common_context}"
         ),
         expected_output=(
-            "Markdown with sections: Prompt, Ruleset, Constraints, Output Format."
+            "Markdown containing exactly the five required sections for prompt-[ticket-key].md."
         ),
         agent=reasoner,
         context=[gather_task],
@@ -171,10 +395,12 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             f"Available tool names: {sorted(tool_names)}\n"
             f"- JIRA_ADD_COMMENT available: {has_jira_add_comment}\n"
             f"- JIRA_EDIT_ISSUE available: {has_jira_edit_issue}\n"
+            f"- JIRA_ADD_ATTACHMENT available: {has_jira_add_attachment}\n"
             "Rules:\n"
             "- Always use issue key from context.\n"
             "- If JIRA_ADD_COMMENT is available, add a comment with a short summary and prompt-ready note.\n"
             "- Only update issue description when JIRA_EDIT_ISSUE is available.\n"
+            "- Mention that a prompt markdown attachment will be added when available.\n"
             "- Never call any tool that is not listed in available tool names."
         ),
         expected_output="Confirmation of Jira write-back actions taken.",
@@ -190,6 +416,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     )
     try:
         result = crew.kickoff()
+        used_model = model
     except Exception as exc:
         logger.exception("LeadSync crew kickoff failed for model '%s'.", model)
         if "-latest" in model and "NOT_FOUND" in str(exc):
@@ -199,7 +426,29 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             reasoner.llm = fallback_model
             propagator.llm = fallback_model
             result = crew.kickoff()
-            return CrewRunResult(raw=str(result), model=fallback_model)
+            used_model = fallback_model
+        else:
+            raise
+
+    try:
+        gathered_context = _extract_task_output(gather_task)
+        reasoner_text = _extract_task_output(reason_task)
+        prompt_markdown = _normalize_prompt_markdown(
+            reasoner_text=reasoner_text,
+            issue_key=issue_key,
+            summary=summary,
+            gathered_context=gathered_context,
+            ruleset_content=ruleset_content,
+        )
+        prompt_path = _write_prompt_file(issue_key=issue_key, markdown=prompt_markdown)
+        _attach_prompt_file(tools=tools, issue_key=issue_key, file_path=prompt_path)
+        logger.info(
+            "Workflow 1 prompt file generated and attached for issue '%s': %s",
+            issue_key,
+            prompt_path,
+        )
+    except Exception:
+        logger.exception("Workflow 1 prompt artifact handling failed for issue '%s'.", issue_key)
         raise
 
-    return CrewRunResult(raw=str(result), model=model)
+    return CrewRunResult(raw=str(result), model=used_model)

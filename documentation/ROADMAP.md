@@ -32,9 +32,9 @@ Use this file as the live execution board.
 
 ### Dev 2 (Crew Logic & Content)
 - [x] `src/shared.py` exports `_required_env`, `build_llm`, `build_tools`, `CrewRunResult`.
-- [ ] `templates/backend-ruleset.md` is present and usable.
-- [ ] `templates/frontend-ruleset.md` is present and usable.
-- [ ] `templates/db-ruleset.md` is present and usable.
+- [x] `templates/backend-ruleset.md` is present and usable.
+- [x] `templates/frontend-ruleset.md` is present and usable.
+- [x] `templates/db-ruleset.md` is present and usable.
 - [x] `config/tech-lead-context.md` is present with realistic team guidance.
 - [x] All crew files use shared helpers from `src/shared.py` (no duplicate env/tool builders).
 
@@ -45,14 +45,14 @@ Use this file as the live execution board.
 ### Dev 2 (Crew)
 - [x] `src/leadsync_crew.py` runs 3-agent sequential flow with `verbose=True`.
 - [x] Ruleset template is selected by ticket label (`backend`/`frontend`/`database`) with safe fallback.
-- [ ] Generated output is one file only: `prompt-[ticket-key].md`.
-- [ ] Prompt structure includes:
-  - [ ] `## Task`
-  - [ ] `## Context`
-  - [ ] `## Constraints`
-  - [ ] `## Implementation Rules`
-  - [ ] `## Expected Output`
-- [ ] Jira propagation updates description + adds comment + attaches prompt file.
+- [x] Generated output is one file only: `prompt-[ticket-key].md`.
+- [x] Prompt structure includes:
+  - [x] `## Task`
+  - [x] `## Context`
+  - [x] `## Constraints`
+  - [x] `## Implementation Rules`
+  - [x] `## Expected Output`
+- [x] Jira propagation updates description + adds comment + attaches prompt file.
 - [x] Crew kickoff has try/except with readable logs.
 - [x] Model fallback logic for `-latest` + `NOT_FOUND` is implemented.
 
@@ -203,4 +203,8 @@ Use this file as the live execution board.
 
 | Date | Owner | Update |
 |------|-------|--------|
+| 2026-02-28 | Dev 1 | Added `railway.json` with explicit Railpack start command (`uvicorn src.main:app --host 0.0.0.0 --port $PORT`) and `/health` healthcheck to resolve `railway up` auto-detection failure. |
+| 2026-02-28 | Dev 2 | Added minimal backend/frontend/db ruleset template files under `templates/` and improved Workflow 1 ruleset matching to select related rulesets from Jira labels/components; added tests for matching behavior. |
 | 2026-02-28 | Dev 2 | Implemented conditional preference injection in Workflow 3 (`QUESTION_TYPE` classification + conditional reasoning branch) and added 2 Slack crew prompt tests; suite now 51 passing tests. |
+| 2026-02-28 | Dev 2 | Implemented Workflow 1 deterministic prompt artifact flow: generates `artifacts/workflow1/prompt-[ticket-key].md` with required sections and attaches via `JIRA_ADD_ATTACHMENT`; added tests for section structure and attachment failure handling. |
+| 2026-02-28 | Dev 2 | Fixed Workflow 1 Jira attachment bug where filename-only upload failed; now passes absolute path for both `local_file_path` and `file_to_upload`, adds explicit file existence check, and extends test coverage. |
