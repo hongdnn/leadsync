@@ -169,6 +169,58 @@ def test_run_digest_crew_passes_schedule_arguments(
     assert kwargs["repo_name"] == "hello-world"
 
 
+def test_parse_digest_blocks_parses_new_multiline_format():
+    from src.workflow2.parsing import parse_digest_areas, parse_digest_blocks
+
+    digest_text = (
+        "---\n"
+        "AREA: WF2 Digest\n"
+        "AUTHORS: ramis, john\n"
+        "COMMITS: 2\n"
+        "FILES: src/workflow2/runner.py (M), src/digest_crew.py (M)\n"
+        "SUMMARY: Fixed WF2 digest by injecting since timestamp into GitHub Scanner.\n"
+        "DECISIONS: Chose timestamp injection for accurate hourly window filtering.\n"
+        "---\n"
+        "AREA: Documentation\n"
+        "AUTHORS: ramis\n"
+        "COMMITS: 1\n"
+        "FILES: CLAUDE.md (M)\n"
+        "SUMMARY: Updated CLAUDE.md with tool usage limitations.\n"
+        "DECISIONS: None.\n"
+        "---"
+    )
+    # parse_digest_areas returns legacy-compatible tuples
+    rows = parse_digest_areas(digest_text)
+    assert len(rows) == 2
+    assert rows[0][0] == "WF2 Digest"
+    assert "timestamp" in rows[0][1]
+    assert rows[1][0] == "Documentation"
+
+    # parse_digest_blocks returns rich DigestArea objects
+    blocks = parse_digest_blocks(digest_text)
+    assert len(blocks) == 2
+    assert blocks[0].authors == "ramis, john"
+    assert blocks[0].commits == "2"
+    assert "runner.py" in blocks[0].files
+    assert blocks[1].authors == "ramis"
+    assert blocks[1].commits == "1"
+
+
+def test_parse_digest_blocks_falls_back_to_legacy_format():
+    from src.workflow2.parsing import parse_digest_blocks
+
+    digest_text = (
+        "AREA: auth | SUMMARY: Added token refresh guard | RISKS: Needs load testing\n"
+        "AREA: api | SUMMARY: Refactored webhook retries | RISKS: Verify idempotency"
+    )
+    blocks = parse_digest_blocks(digest_text)
+    assert len(blocks) == 2
+    assert blocks[0].area == "auth"
+    assert blocks[0].summary == "Added token refresh guard"
+    assert blocks[0].decisions == "Needs load testing"
+    assert blocks[0].authors == ""  # legacy has no authors
+
+
 def test_run_digest_crew_raises_when_missing_repo_target(monkeypatch):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")

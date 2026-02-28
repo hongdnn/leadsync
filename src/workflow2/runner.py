@@ -60,63 +60,114 @@ def run_workflow2(
     scanner = runtime.Agent(
         role="GitHub Scanner",
         goal=(
-            "Collect all main-branch commit activity "
-            f"from repository {repo_owner}/{repo_name} in the last {window_minutes} minutes."
+            "Collect detailed commit activity from the main branch of "
+            f"{repo_owner}/{repo_name} in the last {window_minutes} minutes, "
+            "including file-level change details for every commit."
         ),
-        backstory="You gather every commit and report them all without filtering.",
+        backstory=(
+            "You gather every commit with full details — author, message, "
+            "and file-level changes — so the digest writer has rich data to work with."
+        ),
         verbose=True,
         tools=github_tools,
         llm=model,
     )
     writer = runtime.Agent(
         role="Digest Writer",
-        goal="Group the scanned work by area and produce a concise team digest.",
-        backstory="You write clear summaries for engineers and avoid generic filler.",
+        goal=(
+            "Produce a detailed, engineer-friendly team digest grouped by area, "
+            "including author names, commit counts, and key file changes."
+        ),
+        backstory=(
+            "You write detailed yet scannable digests for engineering teams. "
+            "You always attribute work to authors, cite specific files, and "
+            "explain what changed and why — never generic filler."
+        ),
         verbose=True,
         llm=model,
     )
     poster = runtime.Agent(
         role="Slack Poster",
-        goal=f"Post the digest to Slack channel {slack_channel_id}.",
-        backstory="You publish the final digest message exactly once with clear formatting.",
+        goal=f"Post the digest to Slack channel {slack_channel_id} with rich formatting.",
+        backstory=(
+            "You format and post engineering digests to Slack using mrkdwn. "
+            "Each area gets a bold header, author attribution, and file references."
+        ),
         verbose=True,
         tools=slack_tools,
         llm=model,
     )
     scan_task = runtime.Task(
         description=(
-            f"Use GITHUB tools only for repository {repo_owner}/{repo_name} "
+            f"Use GITHUB tools for repository {repo_owner}/{repo_name} "
             f"to list ALL commits on the main branch since {since_iso} (UTC).\n"
-            f"Pass '{since_iso}' as the 'since' parameter when calling the GitHub API.\n"
-            "- Include every commit — do not skip or filter any.\n"
-            "- For each commit: author, commit message, and impacted area.\n"
-            "- If no commits exist after that timestamp, return 'NO_COMMITS'."
+            f"Pass '{since_iso}' as the 'since' parameter when calling the GitHub API.\n\n"
+            "STEP 1: List all commits since that timestamp. Include every commit — do not skip or filter any.\n"
+            "STEP 2: For EACH commit, call GITHUB_GET_A_COMMIT with the commit SHA to get "
+            "the full details including the list of files changed.\n\n"
+            "For each commit, report ALL of the following:\n"
+            "- SHA: first 7 characters of the commit hash\n"
+            "- AUTHOR: the committer's name or login\n"
+            "- MESSAGE: the full commit message\n"
+            "- FILES: list of changed files with their status (added/modified/removed) "
+            "and lines changed (+additions/-deletions) if available\n\n"
+            "If no commits exist after that timestamp, return exactly 'NO_COMMITS'."
         ),
-        expected_output="Complete list of commits from the time window.",
+        expected_output=(
+            "Detailed list of every commit with SHA, author, message, "
+            "and file-level changes (file paths, status, lines changed)."
+        ),
         agent=scanner,
     )
     write_task = runtime.Task(
         description=(
-            f"Draft a concise {digest_label.lower()} digest from all scanned commits.\n"
-            "- Summarize key changes and new decisions made in the commits.\n"
-            "- Group by subsystem or area.\n"
-            "- Keep under 12 lines.\n"
-            "- Output lines in this exact format:\n"
-            "  AREA: <name> | SUMMARY: <text> | DECISIONS: <text>\n"
-            "- If scanner output is 'NO_COMMITS', output exactly one line:\n"
-            f"  AREA: general | SUMMARY: No commits in last {window_minutes} minutes. | DECISIONS: None."
+            f"Draft a detailed {digest_label.lower()} engineering digest from the scanned commits.\n"
+            "Group commits by subsystem or area (e.g., 'WF2 Digest', 'API', 'Auth', 'Testing').\n\n"
+            "For EACH area, output a block in this EXACT format (one block per area):\n"
+            "---\n"
+            "AREA: <area name>\n"
+            "AUTHORS: <comma-separated list of commit authors in this area>\n"
+            "COMMITS: <number of commits in this area>\n"
+            "FILES: <comma-separated list of key files changed, e.g. src/main.py (M), tests/test_api.py (A)>\n"
+            "SUMMARY: <2-3 sentences describing what changed, be specific — mention function names, "
+            "features, or fixes. Never write generic descriptions like 'made updates'.>\n"
+            "DECISIONS: <key technical decisions, trade-offs, or risks. If none, write 'None.'>\n"
+            "---\n\n"
+            "Rules:\n"
+            "- Maximum 8 area blocks.\n"
+            "- FILES uses (A)dded, (M)odified, (D)eleted status markers.\n"
+            "- Attribute work to specific authors — do not say 'the team'.\n"
+            "- Be specific in SUMMARY — cite file names, function names, and what exactly changed.\n"
+            "- If scanner output is 'NO_COMMITS', output exactly:\n"
+            "---\n"
+            f"AREA: general\nAUTHORS: none\nCOMMITS: 0\nFILES: none\n"
+            f"SUMMARY: No commits in the last {window_minutes} minutes.\n"
+            "DECISIONS: None.\n"
+            "---"
         ),
-        expected_output="A polished plain-text digest summarizing all changes and decisions.",
+        expected_output=(
+            "Multi-block digest with each area containing AREA, AUTHORS, COMMITS, "
+            "FILES, SUMMARY, and DECISIONS fields."
+        ),
         agent=writer,
         context=[scan_task],
     )
     post_task = runtime.Task(
         description=(
             f"Post the digest to Slack channel {slack_channel_id} using SLACK tools.\n"
-            f"- Prefix with '[LeadSync {digest_label} Digest]'.\n"
-            "- Preserve line breaks for readability."
+            "Format the message using Slack mrkdwn as follows:\n\n"
+            f"Line 1: *[LeadSync {digest_label} Digest — {repo_owner}/{repo_name}]*\n"
+            "Line 2: blank line\n"
+            "Then for each area block from the digest:\n"
+            "- *<AREA name>* (<COMMITS> commits by <AUTHORS>)\n"
+            "- The SUMMARY text on the next line\n"
+            "- `Key files:` followed by file names in inline code backticks\n"
+            "- If DECISIONS is not 'None.', add: _Decisions: <text>_\n"
+            "- Add a blank line between area blocks\n\n"
+            "Keep the message readable and well-spaced. Do not add any commentary "
+            "beyond what the digest writer produced."
         ),
-        expected_output="Confirmation that the digest was posted to Slack.",
+        expected_output="Confirmation that the formatted digest was posted to Slack.",
         agent=poster,
         context=[write_task],
     )

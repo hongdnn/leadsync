@@ -55,6 +55,11 @@ def run_workflow5(
             ticket_key=pr.jira_key,
             pr_url=pr.html_url,
             pr_number=pr.number,
+            pr_title=pr.title,
+            branch=pr.branch,
+            owner=pr.owner,
+            repo=pr.repo,
+            head_sha=pr.head_sha,
         )
         transition_result = transition_jira_to_in_review(
             jira_tools=jira_tools,

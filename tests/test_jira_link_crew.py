@@ -127,15 +127,24 @@ class TestRunWorkflow5Runner:
 
 class TestPostJiraPrLinkComment:
 
+    PR_KWARGS = dict(
+        ticket_key="LEADS-10",
+        pr_url="https://github.com/org/repo/pull/5",
+        pr_number=5,
+        pr_title="LEADS-10: add login",
+        branch="feature/LEADS-10",
+        owner="org",
+        repo="repo",
+        head_sha="abc1234def5678",
+    )
+
     def test_posts_when_no_duplicate(self):
         from src.workflow5.ops import post_jira_pr_link_comment
         get_tool = _make_tool("JIRA_GET_ISSUE", run_return={"fields": {"comment": {"comments": []}}})
         comment_tool = _make_tool("JIRA_ADD_COMMENT", run_return={"successful": True})
         result = post_jira_pr_link_comment(
             jira_tools=[get_tool, comment_tool],
-            ticket_key="LEADS-10",
-            pr_url="https://github.com/org/repo/pull/5",
-            pr_number=5,
+            **self.PR_KWARGS,
         )
         assert result == "posted"
         comment_tool.run.assert_called_once()
@@ -147,9 +156,7 @@ class TestPostJiraPrLinkComment:
         comment_tool = _make_tool("JIRA_ADD_COMMENT")
         result = post_jira_pr_link_comment(
             jira_tools=[get_tool, comment_tool],
-            ticket_key="LEADS-10",
-            pr_url="https://github.com/org/repo/pull/5",
-            pr_number=5,
+            **self.PR_KWARGS,
         )
         assert result == "skipped:duplicate"
         comment_tool.run.assert_not_called()
@@ -158,9 +165,7 @@ class TestPostJiraPrLinkComment:
         from src.workflow5.ops import post_jira_pr_link_comment
         result = post_jira_pr_link_comment(
             jira_tools=[],
-            ticket_key="LEADS-10",
-            pr_url="https://github.com/org/repo/pull/5",
-            pr_number=5,
+            **self.PR_KWARGS,
         )
         assert result == "skipped:no-tool"
 
@@ -171,10 +176,24 @@ class TestPostJiraPrLinkComment:
         with pytest.raises(RuntimeError, match="JIRA_ADD_COMMENT failed"):
             post_jira_pr_link_comment(
                 jira_tools=[get_tool, comment_tool],
-                ticket_key="LEADS-10",
-                pr_url="https://github.com/org/repo/pull/5",
-                pr_number=5,
+                **self.PR_KWARGS,
             )
+
+    def test_comment_body_includes_pr_details(self):
+        from src.workflow5.ops import post_jira_pr_link_comment, JIRA_COMMENT_MARKER
+        get_tool = _make_tool("JIRA_GET_ISSUE", run_return={"fields": {}})
+        comment_tool = _make_tool("JIRA_ADD_COMMENT", run_return={"successful": True})
+        post_jira_pr_link_comment(
+            jira_tools=[get_tool, comment_tool],
+            **self.PR_KWARGS,
+        )
+        body = comment_tool.run.call_args.kwargs["comment"]
+        assert JIRA_COMMENT_MARKER in body
+        assert "LEADS-10: add login" in body
+        assert "feature/LEADS-10" in body
+        assert "org/repo" in body
+        assert "abc1234" in body
+        assert "Automatically linked by LeadSync" in body
 
 
 class TestTransitionJiraToInReview:

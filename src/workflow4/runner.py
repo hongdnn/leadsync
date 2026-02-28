@@ -5,10 +5,7 @@ from typing import Any
 
 from src.shared import CrewRunResult
 from src.workflow4.ai_writer import generate_ai_sections
-from src.workflow4.enrichment import (
-    render_full_pr_details,
-    upsert_enrichment_block,
-)
+from src.workflow4.enrichment import render_full_pr_details
 from src.workflow4.ops import list_pr_files, upsert_pr_body
 from src.workflow4.parsing import parse_pr_context
 
@@ -47,6 +44,7 @@ def run_workflow4(payload: dict[str, Any], github_tools: list[Any], jira_tools: 
     ai_summary: str | None = None
     ai_implementation: list[str] | None = None
     ai_validation: list[str] | None = None
+    ai_title: str = ""
     ai_used = False
     if files:
         try:
@@ -55,12 +53,14 @@ def run_workflow4(payload: dict[str, Any], github_tools: list[Any], jira_tools: 
                 pr_title=pr.title,
                 files=files,
             )
+            ai_title = ai_sections.suggested_title
             ai_summary = ai_sections.summary
             ai_implementation = [f"- {line}" for line in ai_sections.implementation_details]
             ai_validation = [f"- {line}" for line in ai_sections.suggested_validation]
             ai_used = True
         except Exception:
             logger.exception("Workflow4 AI generation failed; using deterministic fallback.")
+            ai_title = ""
             ai_summary = None
             ai_implementation = None
             ai_validation = None
@@ -73,9 +73,8 @@ def run_workflow4(payload: dict[str, Any], github_tools: list[Any], jira_tools: 
         implementation_override=ai_implementation,
         validation_override=ai_validation,
     )
-    updated_body = upsert_enrichment_block(pr.body, details_block)
 
-    upsert_pr_body(github_tools, pr.owner, pr.repo, pr.number, updated_body)
+    upsert_pr_body(github_tools, pr.owner, pr.repo, pr.number, details_block, title=ai_title)
     logger.warning(
         "Workflow4 PR body updated: pr=%s files=%d ai_used=%s",
         pr.number,

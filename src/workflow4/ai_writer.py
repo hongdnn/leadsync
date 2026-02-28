@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class AISections:
     """Structured AI output sections for PR body."""
 
+    suggested_title: str
     summary: str
     implementation_details: list[str]
     suggested_validation: list[str]
@@ -101,6 +102,7 @@ def generate_ai_sections(*, ticket_key: str, pr_title: str, files: list[dict[str
             "Generate PR sections using ONLY the diff context below.\n"
             "Do not invent architecture not present in diffs.\n"
             "Return STRICT JSON with keys:\n"
+            "suggested_title: string (concise PR title, max 72 chars, imperative mood e.g. 'Add user auth endpoint')\n"
             "summary: string\n"
             "implementation_details: string[]\n"
             "suggested_validation: string[]\n\n"
@@ -108,7 +110,7 @@ def generate_ai_sections(*, ticket_key: str, pr_title: str, files: list[dict[str
             f"PR title: {pr_title or 'N/A'}\n\n"
             f"Diff context:\n{diff_context}\n"
         ),
-        expected_output="Strict JSON object with summary, implementation_details, suggested_validation.",
+        expected_output="Strict JSON object with suggested_title, summary, implementation_details, suggested_validation.",
         agent=writer,
     )
 
@@ -129,6 +131,7 @@ def generate_ai_sections(*, ticket_key: str, pr_title: str, files: list[dict[str
     logger.warning("Workflow4 AI writer raw output: %s", output[:1200])
     data = _extract_json_object(output)
 
+    suggested_title = str(data.get("suggested_title") or "").strip()
     summary = str(data.get("summary") or "").strip()
     if not summary:
         raise RuntimeError("AI output missing summary.")
@@ -141,12 +144,14 @@ def generate_ai_sections(*, ticket_key: str, pr_title: str, files: list[dict[str
         validation = ["Run relevant unit/integration tests for touched modules."]
 
     result = AISections(
+        suggested_title=suggested_title,
         summary=summary,
         implementation_details=implementation,
         suggested_validation=validation,
     )
     logger.warning(
-        "Workflow4 AI writer parsed: summary_len=%d impl_items=%d validation_items=%d",
+        "Workflow4 AI writer parsed: title_len=%d summary_len=%d impl_items=%d validation_items=%d",
+        len(result.suggested_title),
         len(result.summary),
         len(result.implementation_details),
         len(result.suggested_validation),

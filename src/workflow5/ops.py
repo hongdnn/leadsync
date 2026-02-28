@@ -24,12 +24,58 @@ def _run_required_tool(tool: Any, action: str, **kwargs: Any) -> Any:
     return response
 
 
+def _build_pr_link_comment(
+    *,
+    pr_url: str,
+    pr_number: int,
+    pr_title: str = "",
+    branch: str = "",
+    owner: str = "",
+    repo: str = "",
+    head_sha: str = "",
+) -> str:
+    """Build a rich Jira comment body for a linked PR.
+
+    Args:
+        pr_url: Full GitHub PR URL.
+        pr_number: PR number.
+        pr_title: PR title text.
+        branch: Source branch name.
+        owner: Repository owner.
+        repo: Repository name.
+        head_sha: HEAD commit SHA.
+    Returns:
+        Formatted comment string with idempotency marker.
+    """
+    lines = [JIRA_COMMENT_MARKER]
+    header = f"*Pull Request #{pr_number} Linked*"
+    if pr_title:
+        header = f"*Pull Request #{pr_number} Linked — {pr_title}*"
+    lines.append(header)
+    lines.append("")
+    lines.append(f"|*PR*|[#{pr_number} — {pr_title or 'View PR'}|{pr_url}]|")
+    if branch:
+        lines.append(f"|*Branch*|{{{{{branch}}}}}|")
+    if owner and repo:
+        lines.append(f"|*Repository*|{owner}/{repo}|")
+    if head_sha:
+        lines.append(f"|*Latest Commit*|{{{{{head_sha[:7]}}}}}|")
+    lines.append("")
+    lines.append("_Automatically linked by LeadSync_")
+    return "\n".join(lines)
+
+
 def post_jira_pr_link_comment(
     *,
     jira_tools: list[Any],
     ticket_key: str,
     pr_url: str,
     pr_number: int,
+    pr_title: str = "",
+    branch: str = "",
+    owner: str = "",
+    repo: str = "",
+    head_sha: str = "",
 ) -> str:
     """Post a PR-link comment on the Jira ticket with idempotency check.
 
@@ -38,6 +84,11 @@ def post_jira_pr_link_comment(
         ticket_key: Jira issue key (e.g. LEADS-99).
         pr_url: Full GitHub PR URL.
         pr_number: PR number.
+        pr_title: PR title text.
+        branch: Source branch name.
+        owner: Repository owner.
+        repo: Repository name.
+        head_sha: HEAD commit SHA.
     Returns:
         'posted', 'skipped:duplicate', or 'skipped:no-tool'.
     """
@@ -55,7 +106,15 @@ def post_jira_pr_link_comment(
         except Exception:
             logger.warning("WF5: JIRA_GET_ISSUE check failed for %s; proceeding.", ticket_key)
 
-    body = f"{JIRA_COMMENT_MARKER}\nPR linked: {pr_url} (PR #{pr_number})"
+    body = _build_pr_link_comment(
+        pr_url=pr_url,
+        pr_number=pr_number,
+        pr_title=pr_title,
+        branch=branch,
+        owner=owner,
+        repo=repo,
+        head_sha=head_sha,
+    )
     _run_required_tool(comment_tool, "JIRA_ADD_COMMENT", issue_id_or_key=ticket_key, comment=body)
     return "posted"
 

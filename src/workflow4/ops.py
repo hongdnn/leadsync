@@ -126,8 +126,10 @@ def list_pr_files(
     return []
 
 
-def upsert_pr_body(github_tools: list[Any], owner: str, repo: str, number: int, body: str) -> None:
-    """Update pull request body using whichever update/edit tool is available."""
+def upsert_pr_body(
+    github_tools: list[Any], owner: str, repo: str, number: int, body: str, *, title: str = ""
+) -> None:
+    """Update pull request body and optionally title using whichever update/edit tool is available."""
     tool = find_tool(
         github_tools,
         "GITHUB_UPDATE_A_PULL_REQUEST",
@@ -137,8 +139,11 @@ def upsert_pr_body(github_tools: list[Any], owner: str, repo: str, number: int, 
     if tool is None:
         raise RuntimeError("No GitHub pull request update tool available.")
 
-    variants = [
-        {"owner": owner, "repo": repo, "pull_number": number, "body": body},
-        {"owner": owner, "repo": repo, "number": number, "body": body},
-    ]
+    base_a: dict[str, Any] = {"owner": owner, "repo": repo, "pull_number": number, "body": body}
+    base_b: dict[str, Any] = {"owner": owner, "repo": repo, "number": number, "body": body}
+    if title:
+        base_a["title"] = title
+        base_b["title"] = title
+
+    variants = [base_a, base_b]
     run_tool_variants(tool, variants)

@@ -5,7 +5,7 @@ from typing import Any
 
 from src.common.task_output import extract_task_output
 from src.shared import CrewRunResult
-from src.workflow2.parsing import parse_digest_areas
+from src.workflow2.parsing import parse_digest_blocks
 
 
 def maybe_acquire_digest_lock(
@@ -51,7 +51,7 @@ def persist_digest_memory(
             db_path = runtime.build_memory_db_path()
             scan_text = extract_task_output(scan_task)
             digest_text = extract_task_output(write_task)
-            area_rows = parse_digest_areas(digest_text)
+            area_blocks = parse_digest_blocks(digest_text)
             runtime.record_event(
                 db_path=db_path,
                 event_type="github_commit_batch",
@@ -63,14 +63,20 @@ def persist_digest_memory(
                     "bucket_start_utc": bucket_start_utc,
                 },
             )
-            for area, area_summary, risks in area_rows:
+            for block in area_blocks:
                 runtime.record_memory_item(
                     db_path=db_path,
                     workflow="workflow2",
                     item_type="daily_digest_area",
-                    summary=f"{area}: {area_summary}",
-                    decision=risks,
-                    context={"area": area, "source": "digest_writer"},
+                    summary=f"{block.area}: {block.summary}",
+                    decision=block.decisions,
+                    context={
+                        "area": block.area,
+                        "authors": block.authors,
+                        "commits": block.commits,
+                        "files": block.files,
+                        "source": "digest_writer",
+                    },
                 )
             runtime.record_event(
                 db_path=db_path,
@@ -78,7 +84,7 @@ def persist_digest_memory(
                 workflow="workflow2",
                 payload={
                     "digest_summary": digest_text,
-                    "area_count": len(area_rows),
+                    "area_count": len(area_blocks),
                     "window_minutes": window_minutes,
                     "run_source": run_source,
                     "bucket_start_utc": bucket_start_utc,

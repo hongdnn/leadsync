@@ -47,6 +47,10 @@ def test_run_workflow2_uses_window_minutes_in_scan_prompt(mock_kickoff):
     assert "since" in scan_task_description
     assert "NO_COMMITS" in scan_task_description
     assert "repository acme/leadsync" in scan_task_description
+    assert "GITHUB_GET_A_COMMIT" in scan_task_description
+    assert "SHA" in scan_task_description
+    assert "AUTHOR" in scan_task_description
+    assert "FILES" in scan_task_description
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")
@@ -73,7 +77,10 @@ def test_run_workflow2_write_prompt_includes_no_commit_heartbeat_line(mock_kicko
     )
 
     write_task_description = runtime.Task.call_args_list[1].kwargs["description"]
-    assert "No commits in last 60 minutes." in write_task_description
+    assert "No commits in the last 60 minutes." in write_task_description
+    assert "AUTHORS" in write_task_description
+    assert "COMMITS" in write_task_description
+    assert "FILES" in write_task_description
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")
