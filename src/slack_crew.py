@@ -6,10 +6,10 @@ Exports: run_slack_crew(ticket_key, question, thread_ts, channel_id), parse_slac
 
 import logging
 import os
-from pathlib import Path
 
 from crewai import Agent, Crew, Process, Task
 
+from src.prefs import load_preferences
 from src.shared import (
     CrewRunResult,
     _required_env,
@@ -19,7 +19,6 @@ from src.shared import (
 )
 
 logger = logging.getLogger(__name__)
-TECH_LEAD_CONTEXT_PATH = Path(__file__).parent.parent / "config" / "tech-lead-context.md"
 
 
 def parse_slack_text(text: str) -> tuple[str, str]:
@@ -35,18 +34,6 @@ def parse_slack_text(text: str) -> tuple[str, str]:
     """
     parts = text.strip().split(" ", 1)
     return parts[0], parts[1] if len(parts) > 1 else ""
-
-
-def _load_tech_lead_context() -> str:
-    """
-    Load the tech lead guidance file.
-
-    Returns:
-        Markdown content from config/tech-lead-context.md.
-    Side effects:
-        Reads from filesystem.
-    """
-    return TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
 
 
 def run_slack_crew(
@@ -75,7 +62,7 @@ def run_slack_crew(
     _required_gemini_api_key()
     composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
     slack_channel_id = channel_id or _required_env("SLACK_CHANNEL_ID")
-    tech_lead_context = _load_tech_lead_context()
+    tech_lead_context = load_preferences()
 
     retriever = Agent(
         role="Context Retriever",

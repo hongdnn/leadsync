@@ -28,14 +28,11 @@ def test_parse_slack_text_single_word_returns_empty_question():
 @patch("src.slack_crew.Crew")
 def test_run_slack_crew_returns_crew_run_result(
     mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls,
-    monkeypatch, tmp_path
+    monkeypatch
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
-
-    ctx_file = tmp_path / "tech-lead-context.md"
-    ctx_file.write_text("# Tech Lead Context\nPrefer async.")
 
     mock_build_llm.return_value = "gemini/gemini-2.5-flash"
     mock_build_tools.return_value = []
@@ -46,7 +43,7 @@ def test_run_slack_crew_returns_crew_run_result(
     mock_crew_instance.kickoff.return_value = mock_kickoff_result
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.TECH_LEAD_CONTEXT_PATH", ctx_file):
+    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
         from src.slack_crew import run_slack_crew
         from src.shared import CrewRunResult
         result = run_slack_crew(ticket_key="LEADS-1", question="Use async?")
@@ -63,14 +60,11 @@ def test_run_slack_crew_returns_crew_run_result(
 @patch("src.slack_crew.Crew")
 def test_run_slack_crew_model_fallback(
     mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls,
-    monkeypatch, tmp_path
+    monkeypatch
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
-
-    ctx_file = tmp_path / "tech-lead-context.md"
-    ctx_file.write_text("# Tech Lead Context")
 
     mock_build_llm.return_value = "gemini/gemini-2.5-flash-latest"
     mock_build_tools.return_value = []
@@ -83,7 +77,7 @@ def test_run_slack_crew_model_fallback(
     ]
     mock_crew_cls.return_value = mock_crew_instance
 
-    with patch("src.slack_crew.TECH_LEAD_CONTEXT_PATH", ctx_file):
+    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
         from src.slack_crew import run_slack_crew
         result = run_slack_crew(ticket_key="LEADS-1", question="Any concerns?")
 
@@ -91,15 +85,12 @@ def test_run_slack_crew_model_fallback(
     assert mock_crew_instance.kickoff.call_count == 2
 
 
-def test_run_slack_crew_raises_on_missing_slack_channel(monkeypatch, tmp_path):
+def test_run_slack_crew_raises_on_missing_slack_channel(monkeypatch):
     monkeypatch.delenv("SLACK_CHANNEL_ID", raising=False)
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
 
-    ctx_file = tmp_path / "tech-lead-context.md"
-    ctx_file.write_text("# Tech Lead Context")
-
-    with patch("src.slack_crew.TECH_LEAD_CONTEXT_PATH", ctx_file):
+    with patch("src.slack_crew.load_preferences", return_value="# Tech Lead Context\nPrefer async."):
         with patch("src.slack_crew.build_tools", return_value=[]):
             with patch("src.slack_crew.build_llm", return_value="gemini/gemini-2.5-flash"):
                 from src.slack_crew import run_slack_crew
