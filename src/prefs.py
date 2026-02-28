@@ -4,7 +4,10 @@ Tech lead preferences loader and updater.
 Exports: load_preferences, append_preference
 """
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 TECH_LEAD_CONTEXT_PATH = Path(__file__).parent.parent / "config" / "tech-lead-context.md"
 _QUICK_RULES_HEADER = "## Quick Rules (added via Slack)"
@@ -19,7 +22,14 @@ def load_preferences() -> str:
     Side effects:
         Reads from filesystem.
     """
-    return TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
+    try:
+        return TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        logger.error("Tech lead context file not found: %s", TECH_LEAD_CONTEXT_PATH)
+        raise RuntimeError(
+            f"Tech lead preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
+            "Create config/tech-lead-context.md to enable preference loading."
+        ) from None
 
 
 def append_preference(text: str) -> None:
@@ -34,6 +44,8 @@ def append_preference(text: str) -> None:
     Side effects:
         Writes to config/tech-lead-context.md on disk.
     """
+    if not text.strip():
+        raise ValueError("Preference text cannot be empty or whitespace.")
     content = TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
     new_bullet = f"- {text}"
     if _QUICK_RULES_HEADER in content:
