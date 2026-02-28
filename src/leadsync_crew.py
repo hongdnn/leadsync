@@ -18,6 +18,10 @@ def _tool_name_set(tools: list[Any]) -> set[str]:
     return {getattr(tool, "name", "").upper() for tool in tools}
 
 
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     """
     Run the Ticket Enrichment crew for a Jira webhook payload.
@@ -41,22 +45,36 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     has_jira_edit_issue = "JIRA_EDIT_ISSUE" in tool_names
     has_jira_add_comment = "JIRA_ADD_COMMENT" in tool_names
 
-    issue_key = payload.get("issue", {}).get("key", "UNKNOWN")
-    summary = payload.get("issue", {}).get("fields", {}).get("summary", "")
-    labels = payload.get("issue", {}).get("fields", {}).get("labels", [])
+    issue = _safe_dict(payload.get("issue"))
+    if not issue:
+        issue = _safe_dict(payload.get("workItem"))
+    fields = _safe_dict(issue.get("fields"))
+
+    issue_key = issue.get("key", issue.get("id", "UNKNOWN"))
+    summary = fields.get("summary", issue.get("summary", ""))
+    labels = fields.get("labels", issue.get("labels", []))
+    if not isinstance(labels, list):
+        labels = []
+
+    assignee_data = _safe_dict(fields.get("assignee"))
+    if not assignee_data:
+        assignee_data = _safe_dict(issue.get("assignee"))
     assignee = (
-        payload.get("issue", {})
-        .get("fields", {})
-        .get("assignee", {})
-        .get("displayName", "Unassigned")
+        assignee_data.get("displayName")
+        or assignee_data.get("display_name")
+        or assignee_data.get("name")
+        or "Unassigned"
     )
-    project_key = (
-        payload.get("issue", {}).get("fields", {}).get("project", {}).get("key", "")
-    )
-    component_names = [
-        c.get("name", "")
-        for c in payload.get("issue", {}).get("fields", {}).get("components", [])
-    ]
+
+    project = _safe_dict(fields.get("project"))
+    if not project:
+        project = _safe_dict(issue.get("project"))
+    project_key = project.get("key", "")
+
+    components = fields.get("components", issue.get("components", []))
+    if not isinstance(components, list):
+        components = []
+    component_names = [c.get("name", "") for c in components if isinstance(c, dict)]
 
     label = labels[0] if labels else "backend"
     ruleset_map = {
