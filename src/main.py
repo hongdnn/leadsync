@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from src.digest_crew import run_digest_crew
 from src.leadsync_crew import run_leadsync_crew
 from src.memory_store import init_memory_db
+from src.pr_review_crew import run_pr_review_crew
 from src.shared import build_memory_db_path, memory_enabled
 from src.slack_crew import parse_slack_text, run_slack_crew
 
@@ -68,6 +69,28 @@ def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
+    return {"status": "processed", "model": result.model, "result": result.raw}
+
+
+@app.post("/webhooks/github")
+def github_webhook(payload: dict[str, Any]) -> dict[str, str]:
+    """
+    Trigger Workflow 4: GitHub PR gating to Jira In Review.
+
+    Args:
+        payload: GitHub webhook JSON body.
+    Returns:
+        Status + workflow result.
+    Raises:
+        HTTPException 400: Missing env vars or malformed payload.
+        HTTPException 500: Workflow failure.
+    """
+    try:
+        result = run_pr_review_crew(payload=payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Workflow 4 failed: {exc}") from exc
     return {"status": "processed", "model": result.model, "result": result.raw}
 
 
