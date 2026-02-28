@@ -15,7 +15,7 @@ Use this file as the live execution board.
 
 - [x] Decision recorded: `src/main.py` intentionally exceeds the 150-line guideline. CLAUDE.md §8 (150-line limit) conflicts with §4 ("All endpoints in main.py. No router splitting."). Both rules cannot be satisfied simultaneously given the number of required endpoints. Ruling: the no-router-splitting rule takes precedence for this hackathon; the line limit is waived for main.py only.
 - [x] Decision recorded: `src/prefs.py` added as a fourth source module (alongside the three crew files) to provide shared file I/O for tech lead preferences. This is a net-new module outside the original three-workflow crew structure — both developers agreed this is the correct layer for shared file access, not inline in any single crew file.
-- [ ] Decision recorded: __________________________________________
+- [x] Decision recorded: Slack Q&A now uses conditional preference injection. `QUESTION_TYPE` is classified in retrieval output and team preferences are applied only for implementation questions; general questions return factual ticket info.
 
 ---
 
@@ -90,7 +90,7 @@ Use this file as the live execution board.
 - [x] `src/slack_crew.py` exists and uses 3-agent sequential flow with `verbose=True`.
 - [x] Context retrieval pulls relevant Jira ticket context.
 - [x] Reasoning uses `config/tech-lead-context.md`.
-- [x] Slack response is opinionated guidance (not ticket summary).
+- [x] Slack response behavior is conditional: factual ticket answers for GENERAL questions, opinionated guidance for IMPLEMENTATION questions.
 - [x] Crew kickoff has try/except with readable logs.
 - [x] Model fallback logic for `-latest` + `NOT_FOUND` is implemented.
 - [ ] Robustness enhancement: include precedent from last 5 completed same-category Jira tickets.
@@ -180,8 +180,11 @@ Use this file as the live execution board.
 - [x] `append_preference()` appends bullet under `## Quick Rules (added via Slack)` section.
 - [x] `append_preference()` creates the section if absent.
 - [x] `slack_crew.py` refactored: `_load_tech_lead_context()` replaced with `prefs.load_preferences()`.
+- [x] `slack_crew.py` classifies Slack question intent as `QUESTION_TYPE: IMPLEMENTATION` or `QUESTION_TYPE: GENERAL`.
+- [x] `slack_crew.py` applies preferences only for `IMPLEMENTATION`; `GENERAL` responses stay factual and preference-free.
 - [x] `tests/test_prefs.py` covers load, append-existing-section, append-creates-section.
 - [x] `tests/test_main.py` extended: prefs endpoint success + 400 + ssl_check cases.
+- [x] `tests/test_slack_crew.py` extended for question classification and conditional reason-task branching.
 
 ---
 
@@ -190,6 +193,14 @@ Use this file as the live execution board.
 - [ ] Checkpoint A: Local environment + base integrations verified.
 - [ ] Checkpoint B: Workflow 1 production-like behavior verified.
 - [ ] Checkpoint C: All 3 workflows execute without exceptions.
-- [x] Checkpoint D: Tests green with target coverage. (49 tests passing, 88% coverage)
+- [x] Checkpoint D: Tests green with target coverage. (51 tests passing, 88% coverage)
 - [ ] Checkpoint E: Live deploy + external integrations verified.
 - [ ] Checkpoint F: Demo rehearsal complete and stable.
+
+---
+
+## Status Log
+
+| Date | Owner | Update |
+|------|-------|--------|
+| 2026-02-28 | Dev 2 | Implemented conditional preference injection in Workflow 3 (`QUESTION_TYPE` classification + conditional reasoning branch) and added 2 Slack crew prompt tests; suite now 51 passing tests. |

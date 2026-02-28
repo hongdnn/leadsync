@@ -93,20 +93,38 @@ def run_slack_crew(
         description=(
             f"Fetch Jira ticket {ticket_key}.\n"
             "- Include summary, description, labels, assignee, and comments.\n"
-            f"- Developer question: {question}"
+            f"- Developer question: {question}\n"
+            "After fetching the ticket, classify the developer question using this rule:\n"
+            "  IMPLEMENTATION: asks HOW to do something, WHICH approach to take, "
+            "SHOULD I use X or Y, HOW TO structure or design something.\n"
+            "  GENERAL: asks WHAT the ticket is about, WHO is assigned, WHEN it is due, "
+            "status, description, or acceptance criteria.\n"
+            "Output the classification as the FIRST line of your response in this exact format:\n"
+            "QUESTION_TYPE: IMPLEMENTATION\n"
+            "or\n"
+            "QUESTION_TYPE: GENERAL"
         ),
-        expected_output="Structured Jira ticket context for downstream reasoning.",
+        expected_output="QUESTION_TYPE label on the first line, followed by structured Jira ticket context.",
         agent=retriever,
     )
     reason_task = Task(
         description=(
-            "Use the ticket context and these team implementation guidelines:\n"
+            f"Question: {question}\n\n"
+            "Read the QUESTION_TYPE from the retriever output and follow the matching branch:\n\n"
+            "If QUESTION_TYPE: GENERAL\n"
+            "- Return only factual information from the ticket in 1-2 sentences.\n"
+            "- Do NOT reference or apply any tech lead preferences.\n"
+            "- Do NOT give implementation opinions.\n\n"
+            "If QUESTION_TYPE: IMPLEMENTATION\n"
+            "- Apply the following tech lead guidance to give an opinionated recommendation:\n"
             f"---\n{team_preferences}\n---\n"
-            f"Question: {question}\n"
-            "- Return a concrete implementation recommendation in 2-4 sentences.\n"
+            "- Return a direct recommendation in 2-4 sentences.\n"
             "- Mention tradeoffs when they matter."
         ),
-        expected_output="Actionable recommendation that references relevant project constraints.",
+        expected_output=(
+            "Either a factual 1-2 sentence answer (GENERAL) or an opinionated "
+            "recommendation citing relevant project constraints (IMPLEMENTATION)."
+        ),
         agent=reasoner,
         context=[retrieve_task],
     )

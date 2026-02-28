@@ -54,3 +54,4 @@ htmlcov/
 .claudeignore
 CLAUDE.md
 .geminiignore
+docs/
