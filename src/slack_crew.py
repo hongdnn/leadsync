@@ -53,7 +53,8 @@ def run_slack_crew(
     Returns:
         CrewRunResult with raw output and model used.
     Raises:
-        RuntimeError: If required environment variables are missing.
+        RuntimeError: If required environment variables are missing, or if the
+            tech lead preferences file (config/tech-lead-context.md) is absent.
         Exception: If kickoff fails and fallback logic also fails.
     Side effects:
         Reads Jira context and posts an answer through Composio Slack tools.
