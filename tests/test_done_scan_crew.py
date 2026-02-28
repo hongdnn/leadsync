@@ -267,9 +267,9 @@ class TestPostDoneScanComment:
         comment_tool.run.assert_called_once()
 
     def test_skips_when_duplicate(self):
-        from src.workflow6.ops import post_done_scan_comment, JIRA_COMMENT_MARKER
+        from src.workflow6.ops import post_done_scan_comment, DEDUP_MARKER
 
-        existing = f"Previous comments... {JIRA_COMMENT_MARKER} Implementation scan..."
+        existing = f"Previous comments... {DEDUP_MARKER} — LEADS-10 ..."
         get_tool = _make_tool("JIRA_GET_ISSUE", run_return=existing)
         comment_tool = _make_tool("JIRA_ADD_COMMENT")
         result = post_done_scan_comment(
@@ -304,6 +304,28 @@ class TestPostDoneScanComment:
                 issue_key="LEADS-10",
                 summary_text="Built the login page.",
             )
+
+    def test_comment_body_includes_scan_details(self):
+        from src.workflow6.ops import post_done_scan_comment
+
+        get_tool = _make_tool("JIRA_GET_ISSUE", run_return={"fields": {}})
+        comment_tool = _make_tool("JIRA_ADD_COMMENT", run_return={"successful": True})
+        post_done_scan_comment(
+            jira_tools=[get_tool, comment_tool],
+            issue_key="LEADS-10",
+            summary_text=(
+                "IMPLEMENTATION_SUMMARY: Built login page with JWT auth\n"
+                "FILES_CHANGED: src/login.py, src/auth.py"
+            ),
+            ticket_summary="Add login page",
+        )
+        body = comment_tool.run.call_args.kwargs["comment"]
+        assert "Implementation Scan Complete" in body
+        assert "LEADS-10" in body
+        assert "Add login page" in body
+        assert "Built login page with JWT auth" in body
+        assert "src/login.py, src/auth.py" in body
+        assert "Scanned by LeadSync" in body
 
     def test_proceeds_when_get_issue_fails(self):
         from src.workflow6.ops import post_done_scan_comment

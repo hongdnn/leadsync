@@ -206,6 +206,76 @@ def test_parse_digest_blocks_parses_new_multiline_format():
     assert blocks[1].commits == "1"
 
 
+def test_parse_digest_blocks_parses_changes_field():
+    from src.workflow2.parsing import parse_digest_blocks
+
+    digest_text = (
+        "---\n"
+        "AREA: WF2 Digest\n"
+        "AUTHORS: ramizik\n"
+        "COMMITS: 2\n"
+        "FILES: src/workflow2/parsing.py (M), src/workflow2/runner.py (M)\n"
+        "CHANGES:\n"
+        "- Added _extract_block_fields(block: str) -> DigestArea in parsing.py\n"
+        "- Refactored parse_digest_blocks() to use new extraction helper\n"
+        "- Added since_iso parameter injection in runner.py scan_task\n"
+        "SUMMARY: Refactored WF2 digest parsing into smaller composable functions.\n"
+        "DECISIONS: None.\n"
+        "---"
+    )
+    blocks = parse_digest_blocks(digest_text)
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert block.area == "WF2 Digest"
+    assert block.authors == "ramizik"
+    assert "_extract_block_fields" in block.changes
+    assert "parse_digest_blocks()" in block.changes
+    assert "since_iso" in block.changes
+    assert block.changes.count("- ") == 3
+    assert "Refactored" in block.summary
+
+
+def test_parse_digest_blocks_handles_empty_changes():
+    from src.workflow2.parsing import parse_digest_blocks
+
+    digest_text = (
+        "---\n"
+        "AREA: General\n"
+        "AUTHORS: none\n"
+        "COMMITS: 0\n"
+        "FILES: none\n"
+        "CHANGES:\n"
+        "- No changes\n"
+        "SUMMARY: No commits in the last 60 minutes.\n"
+        "DECISIONS: None.\n"
+        "---"
+    )
+    blocks = parse_digest_blocks(digest_text)
+    assert len(blocks) == 1
+    assert blocks[0].changes == "- No changes"
+    assert blocks[0].summary == "No commits in the last 60 minutes."
+
+
+def test_parse_digest_blocks_without_changes_field_defaults_empty():
+    """Blocks without CHANGES: field still parse correctly (backward compat)."""
+    from src.workflow2.parsing import parse_digest_blocks
+
+    digest_text = (
+        "---\n"
+        "AREA: Auth\n"
+        "AUTHORS: dev1\n"
+        "COMMITS: 1\n"
+        "FILES: src/auth.py (M)\n"
+        "SUMMARY: Added token refresh.\n"
+        "DECISIONS: None.\n"
+        "---"
+    )
+    blocks = parse_digest_blocks(digest_text)
+    assert len(blocks) == 1
+    assert blocks[0].changes == ""
+    assert blocks[0].summary == "Added token refresh."
+
+
 def test_parse_digest_blocks_falls_back_to_legacy_format():
     from src.workflow2.parsing import parse_digest_blocks
 

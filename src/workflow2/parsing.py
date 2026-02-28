@@ -9,7 +9,7 @@ AREA_LINE_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
-# Multi-line block field patterns
+# Multi-line block field patterns (single-line fields parsed individually)
 _FIELD_RE = {
     "area": re.compile(r"^AREA:\s*(.+)", re.IGNORECASE),
     "authors": re.compile(r"^AUTHORS:\s*(.+)", re.IGNORECASE),
@@ -18,6 +18,10 @@ _FIELD_RE = {
     "summary": re.compile(r"^SUMMARY:\s*(.+)", re.IGNORECASE),
     "decisions": re.compile(r"^(?:DECISIONS|RISKS):\s*(.+)", re.IGNORECASE),
 }
+
+# CHANGES is a multi-line field: starts with "CHANGES:" header, followed by
+# bullet lines (- ...) that should all be captured as a single string.
+_CHANGES_HEADER_RE = re.compile(r"^CHANGES:\s*(.*)", re.IGNORECASE)
 
 
 @dataclass
@@ -28,6 +32,7 @@ class DigestArea:
     authors: str = ""
     commits: str = "0"
     files: str = ""
+    changes: str = ""
     summary: str = ""
     decisions: str = ""
 
@@ -105,30 +110,64 @@ def _parse_blocks(digest_text: str) -> list[DigestArea]:
     Only activates when the text contains at least one '---' delimiter.
     This prevents false matches on legacy single-line pipe format.
 
+    Handles the multi-line CHANGES field: once a "CHANGES:" header is seen,
+    subsequent bullet lines ("- ...") are collected until the next field
+    header, delimiter, or end of block.
+
     Args:
         digest_text: Raw writer output text.
     Returns:
         List of DigestArea instances, empty if no blocks found.
     """
-    # Only attempt block parsing when --- delimiters are present
     if "---" not in digest_text:
         return []
 
     blocks: list[DigestArea] = []
     current: DigestArea | None = None
     in_block = False
+    in_changes = False
+    changes_lines: list[str] = []
 
     for raw_line in digest_text.splitlines():
         line = raw_line.strip()
         if line == "---":
+            # Flush pending CHANGES before closing block
+            if current and changes_lines:
+                current.changes = "\n".join(changes_lines)
+                changes_lines = []
+                in_changes = False
             if current and current.area:
                 blocks.append(current)
             current = DigestArea()
             in_block = True
+            in_changes = False
             continue
 
         if not in_block or current is None:
             continue
+
+        # Check for CHANGES: header
+        cm = _CHANGES_HEADER_RE.match(line)
+        if cm:
+            in_changes = True
+            changes_lines = []
+            # Inline content after "CHANGES:" (rare but possible)
+            inline = cm.group(1).strip()
+            if inline:
+                changes_lines.append(inline)
+            continue
+
+        # Collect bullet lines while inside CHANGES
+        if in_changes:
+            if line.startswith("- "):
+                changes_lines.append(line)
+                continue
+            else:
+                # Non-bullet line ends the CHANGES section
+                current.changes = "\n".join(changes_lines)
+                changes_lines = []
+                in_changes = False
+                # Fall through to parse this line as a normal field
 
         for field_name, pattern in _FIELD_RE.items():
             m = pattern.match(line)
@@ -137,6 +176,8 @@ def _parse_blocks(digest_text: str) -> list[DigestArea]:
                 break
 
     # Capture last block if text doesn't end with ---
+    if current and changes_lines:
+        current.changes = "\n".join(changes_lines)
     if current and current.area:
         blocks.append(current)
 

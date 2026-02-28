@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from src.stream import stream_enabled
 from src.workflow1.task_descriptions import (
     gather_description,
     propagate_description,
@@ -93,5 +94,6 @@ def build_workflow1_crew(
         tasks=[gather_task, reason_task, propagate_task],
         process=runtime.Process.sequential,
         verbose=True,
+        stream=stream_enabled(),
     )
     return gather_task, reason_task, propagate_task, [gatherer, reasoner, propagator], crew

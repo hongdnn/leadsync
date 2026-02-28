@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from src.stream import stream_enabled
+
 
 def build_workflow3_crew(
     *,
@@ -31,14 +33,20 @@ def build_workflow3_crew(
     reasoner = runtime.Agent(
         role="Solution Reasoner",
         goal="Recommend implementation approaches based on ticket context and team guidelines.",
-        backstory="You suggest concrete solutions and cite relevant project constraints.",
+        backstory=(
+            "You give specific, actionable engineering guidance. "
+            "You always structure your output with clear labeled sections so it can be formatted for Slack."
+        ),
         verbose=True,
         llm=model,
     )
     responder = runtime.Agent(
         role="Slack Responder",
-        goal=f"Post the final answer to Slack channel {slack_channel_id}.",
-        backstory="You publish concise, actionable responses with clean formatting.",
+        goal=f"Post the final answer to Slack channel {slack_channel_id} with clean Slack formatting.",
+        backstory=(
+            "You format engineering answers for Slack using mrkdwn. "
+            "You use *bold* for headers, bullet lists for details, and keep messages scannable."
+        ),
         verbose=True,
         tools=slack_tools,
         llm=model,
@@ -68,21 +76,36 @@ def build_workflow3_crew(
             f"Question: {question}\n\n"
             "Read QUESTION_TYPE from retriever output and follow matching branch:\n\n"
             "If QUESTION_TYPE: PROGRESS\n"
-            "- Start with this exact line: 'Here is summary of previous progress related to tasks with the same label:'.\n"
-            "- Provide 3-6 bullets with completed ticket keys and what was completed earlier.\n"
-            "- End with one short line: 'What this means now: ...'.\n"
+            "- Output section PROGRESS SUMMARY:\n"
+            "  Start with this exact line: 'Here is summary of previous progress related to tasks with the same label:'.\n"
+            "  Then provide 3-6 bullets, each starting with the ticket key and what was completed.\n"
+            "- Output section CURRENT IMPACT:\n"
+            "  One sentence: what this prior work means for the current ticket.\n"
             "- Do NOT include meta/system wording (e.g., 'ticket enriched', 'ready for development').\n\n"
             "If QUESTION_TYPE: GENERAL\n"
-            "- Return only factual information from the ticket in 1-2 sentences.\n"
+            "- Output section ANSWER:\n"
+            "  Return only factual information from the ticket in 1-3 sentences.\n"
+            "  Include relevant details: assignee, status, priority, labels, or due date if available.\n"
             "- Do NOT reference or apply any tech lead preferences unless question explicitly asks for progress.\n"
             "- Do NOT give implementation opinions.\n\n"
             "If QUESTION_TYPE: IMPLEMENTATION\n"
             "- Apply the following tech lead guidance to give an opinionated recommendation:\n"
             f"- Category: {preference_category}\n---\n{team_preferences}\n---\n"
-            "- Return direct recommendation in 2-4 sentences with one bullet list of key tradeoffs.\n"
-            "- Mention tradeoffs when they matter."
+            "- Output section RECOMMENDATION:\n"
+            "  2-4 sentences with specific, actionable guidance. Mention concrete technologies,\n"
+            "  patterns, or file areas. Never be vague or generic.\n"
+            "- Output section TRADEOFFS:\n"
+            "  2-4 bullet points, each a short sentence about a key tradeoff or risk.\n"
+            "- Output section NEXT STEPS:\n"
+            "  2-4 numbered steps the developer should take next.\n\n"
+            "IMPORTANT: Always output section labels (RECOMMENDATION:, TRADEOFFS:, etc.) on their own line."
         ),
-        expected_output="Factual answer for GENERAL or opinionated guidance for IMPLEMENTATION/PROGRESS.",
+        expected_output=(
+            "Structured answer with labeled sections: "
+            "RECOMMENDATION/TRADEOFFS/NEXT STEPS for IMPLEMENTATION, "
+            "PROGRESS SUMMARY/CURRENT IMPACT for PROGRESS, "
+            "or ANSWER for GENERAL."
+        ),
         agent=reasoner,
         context=[retrieve_task],
     )
@@ -93,10 +116,34 @@ def build_workflow3_crew(
     )
     respond_task = runtime.Task(
         description=(
-            f"Post the answer to Slack channel {slack_channel_id}.\n"
-            f"{thread_instruction}- Prefix with '[{ticket_key}] LeadSync summary:'."
+            f"Post the answer to Slack channel {slack_channel_id} using SLACK tools.\n"
+            f"{thread_instruction}\n"
+            "Format the message using Slack mrkdwn as follows:\n\n"
+            f"Line 1: *[{ticket_key}] LeadSync*\n"
+            "Line 2: blank line\n\n"
+            "Then format the reasoner output based on which sections are present:\n\n"
+            "If RECOMMENDATION section exists (IMPLEMENTATION question):\n"
+            "- *Recommendation*\n"
+            "- The recommendation text on the next line\n"
+            "- Blank line\n"
+            "- *Key Tradeoffs*\n"
+            "- Each tradeoff as a bullet point line\n"
+            "- Blank line\n"
+            "- *Next Steps*\n"
+            "- Each step as a numbered line\n\n"
+            "If PROGRESS SUMMARY section exists (PROGRESS question):\n"
+            "- *Previous Progress*\n"
+            "- Each completed ticket as a bullet point line\n"
+            "- Blank line\n"
+            "- The CURRENT IMPACT text in italics using _text_\n\n"
+            "If ANSWER section exists (GENERAL question):\n"
+            "- Just the answer text directly after the header\n\n"
+            "Rules:\n"
+            "- Use *bold* for section headers only.\n"
+            "- Do NOT add any commentary, preamble, or sign-off beyond what the reasoner produced.\n"
+            "- Keep the message compact and scannable."
         ),
-        expected_output="Confirmation that Slack message was posted.",
+        expected_output="Confirmation that the formatted Slack message was posted.",
         agent=responder,
         context=[reason_task],
     )
@@ -105,5 +152,6 @@ def build_workflow3_crew(
         tasks=[retrieve_task, reason_task, respond_task],
         process=runtime.Process.sequential,
         verbose=True,
+        stream=stream_enabled(),
     )
     return retrieve_task, reason_task, respond_task, [retriever, reasoner, responder], crew

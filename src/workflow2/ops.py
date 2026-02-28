@@ -75,6 +75,7 @@ def persist_digest_memory(
                         "authors": block.authors,
                         "commits": block.commits,
                         "files": block.files,
+                        "changes": block.changes,
                         "source": "digest_writer",
                     },
                 )

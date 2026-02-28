@@ -4,13 +4,15 @@ FastAPI application — all endpoints for LeadSync.
 Endpoints: GET /health, POST /webhooks/jira, POST /digest/trigger, POST /slack/commands, POST /slack/prefs
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import parse_qs
 import logging
 import os
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
@@ -21,6 +23,7 @@ from src.memory_store import init_memory_db, record_memory_item
 from src.pr_review_crew import run_pr_review_crew
 from src.shared import build_memory_db_path, memory_enabled
 from src.slack_crew import parse_slack_text, run_slack_crew
+from src.stream import make_event, manager
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -40,16 +43,35 @@ def initialize_memory() -> None:
 async def lifespan(_app: FastAPI):
     """FastAPI lifespan hook for startup/shutdown side effects."""
     initialize_memory()
+    manager.set_loop(asyncio.get_running_loop())
     yield
 
 
 app = FastAPI(title="LeadSync", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
     """Return service health status."""
     return {"status": "ok"}
+
+
+@app.websocket("/ws/stream")
+async def websocket_stream(ws: WebSocket) -> None:
+    """Accept WebSocket connections for live crew output streaming."""
+    await manager.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
 
 
 def _is_done_transition(payload: dict[str, Any]) -> bool:
@@ -90,15 +112,20 @@ def jira_webhook(payload: dict[str, Any]) -> dict[str, str]:
         HTTPException 400: Missing env vars.
         HTTPException 500: Crew failure.
     """
+    label = "WF6-DoneScan" if _is_done_transition(payload) else "WF1-Enrichment"
+    manager.broadcast_sync(make_event("workflow_start", label))
     try:
-        if _is_done_transition(payload):
+        if label == "WF6-DoneScan":
             result = run_done_scan_crew(payload=payload)
         else:
             result = run_leadsync_crew(payload=payload)
     except RuntimeError as exc:
+        manager.broadcast_sync(make_event("workflow_error", label, content=str(exc)))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        manager.broadcast_sync(make_event("workflow_error", label, content=str(exc)))
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
+    manager.broadcast_sync(make_event("workflow_end", label))
     return {"status": "processed", "model": result.model, "result": result.raw}
 
 
@@ -134,12 +161,16 @@ def jira_done_webhook(payload: dict[str, Any]) -> dict[str, str]:
                 "items": [{"field": "status", "fromString": "In Review", "toString": "Done"}]
             },
         }
+    manager.broadcast_sync(make_event("workflow_start", "WF6-DoneScan"))
     try:
         result = run_done_scan_crew(payload=wrapped)
     except RuntimeError as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF6-DoneScan", content=str(exc)))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF6-DoneScan", content=str(exc)))
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
+    manager.broadcast_sync(make_event("workflow_end", "WF6-DoneScan"))
     return {"status": "processed", "model": result.model, "result": result.raw}
 
 
@@ -157,19 +188,26 @@ def github_webhook(payload: dict[str, Any]) -> dict[str, str]:
         HTTPException 400: Missing env vars or malformed payload.
         HTTPException 500: Workflow 4 failure.
     """
+    manager.broadcast_sync(make_event("workflow_start", "WF4-PRDescription"))
     try:
         result4 = run_pr_review_crew(payload=payload)
     except RuntimeError as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF4-PRDescription", content=str(exc)))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF4-PRDescription", content=str(exc)))
         raise HTTPException(status_code=500, detail=f"Workflow 4 failed: {exc}") from exc
+    manager.broadcast_sync(make_event("workflow_end", "WF4-PRDescription"))
 
     wf5_raw = "skipped:wf5-error"
+    manager.broadcast_sync(make_event("workflow_start", "WF5-JiraLink"))
     try:
         result5 = run_jira_link_crew(payload=payload)
         wf5_raw = result5.raw
+        manager.broadcast_sync(make_event("workflow_end", "WF5-JiraLink"))
     except Exception:
         logger.exception("Workflow 5 failed (non-blocking).")
+        manager.broadcast_sync(make_event("workflow_error", "WF5-JiraLink"))
 
     return {
         "status": "processed",
@@ -200,6 +238,7 @@ async def digest_trigger(request: Request) -> dict[str, str]:
     window_minutes = _coerce_window_minutes(payload.get("window_minutes"))
     repo_owner = str(payload.get("repo_owner", "")).strip() or None
     repo_name = str(payload.get("repo_name", "")).strip() or None
+    manager.broadcast_sync(make_event("workflow_start", "WF2-Digest"))
     try:
         kwargs: dict[str, Any] = {
             "window_minutes": window_minutes,
@@ -214,9 +253,12 @@ async def digest_trigger(request: Request) -> dict[str, str]:
             **kwargs
         )
     except RuntimeError as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF2-Digest", content=str(exc)))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF2-Digest", content=str(exc)))
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
+    manager.broadcast_sync(make_event("workflow_end", "WF2-Digest"))
     return {"status": "processed", "model": result.model, "result": result.raw}
 
 
@@ -287,6 +329,7 @@ async def slack_command(
     if not ticket_key:
         raise HTTPException(status_code=400, detail="ticket_key is required.")
 
+    manager.broadcast_sync(make_event("workflow_start", "WF3-SlackQA"))
     try:
         result = run_slack_crew(
             ticket_key=ticket_key,
@@ -295,10 +338,12 @@ async def slack_command(
             channel_id=channel_id,
         )
     except RuntimeError as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF3-SlackQA", content=str(exc)))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        manager.broadcast_sync(make_event("workflow_error", "WF3-SlackQA", content=str(exc)))
         raise HTTPException(status_code=500, detail=f"Crew run failed: {exc}") from exc
-
+    manager.broadcast_sync(make_event("workflow_end", "WF3-SlackQA"))
     return {"status": "processed", "model": result.model, "result": result.raw}
 
 
@@ -350,6 +395,7 @@ def _run_slack_crew_background(
     channel_id: str | None,
 ) -> None:
     """Run Slack Q&A crew in the background and log failures."""
+    manager.broadcast_sync(make_event("workflow_start", "WF3-SlackQA"))
     try:
         run_slack_crew(
             ticket_key=ticket_key,
@@ -357,8 +403,10 @@ def _run_slack_crew_background(
             thread_ts=thread_ts,
             channel_id=channel_id,
         )
+        manager.broadcast_sync(make_event("workflow_end", "WF3-SlackQA"))
     except Exception:
         logger.exception("Background slack crew run failed for %s.", ticket_key)
+        manager.broadcast_sync(make_event("workflow_error", "WF3-SlackQA"))
 
 
 def _verify_digest_trigger_token(request: Request) -> None:

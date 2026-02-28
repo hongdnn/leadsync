@@ -11,6 +11,7 @@ from crewai import Agent, Crew, Process, Task
 from src.common.model_retry import kickoff_with_model_fallback
 from src.common.task_output import extract_task_output
 from src.shared import build_llm
+from src.stream import stream_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def generate_ai_sections(*, ticket_key: str, pr_title: str, files: list[dict[str
         tasks=[task],
         process=Process.sequential,
         verbose=True,
+        stream=stream_enabled(),
     )
     kickoff_with_model_fallback(
         crew=crew,

@@ -75,13 +75,16 @@ WF5_GITHUB_TOOLS: list[str] = [
     "GITHUB_CREATE_AN_ISSUE_COMMENT",
 ]
 
-# WF6 Implementation Scanner: find commits/PRs matching ticket key
+# WF6 Implementation Scanner: find commits/PRs matching ticket key,
+# plus repo browsing for file-based fallback when no commits/PRs found.
 WF6_GITHUB_TOOLS: list[str] = [
     "GITHUB_LIST_COMMITS",
     "GITHUB_GET_A_COMMIT",
     "GITHUB_FIND_PULL_REQUESTS",
     "GITHUB_GET_A_PULL_REQUEST",
     "GITHUB_LIST_PULL_REQUEST_FILES",
+    "GITHUB_GET_REPOSITORY_CONTENT",
+    "GITHUB_GET_A_TREE",
 ]
 
 # ---------------------------------------------------------------------------

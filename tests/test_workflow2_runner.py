@@ -51,6 +51,8 @@ def test_run_workflow2_uses_window_minutes_in_scan_prompt(mock_kickoff):
     assert "SHA" in scan_task_description
     assert "AUTHOR" in scan_task_description
     assert "FILES" in scan_task_description
+    assert "PATCH" in scan_task_description or "patch" in scan_task_description
+    assert "30 lines" in scan_task_description
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")
@@ -81,6 +83,9 @@ def test_run_workflow2_write_prompt_includes_no_commit_heartbeat_line(mock_kicko
     assert "AUTHORS" in write_task_description
     assert "COMMITS" in write_task_description
     assert "FILES" in write_task_description
+    assert "CHANGES:" in write_task_description
+    assert "patch" in write_task_description.lower()
+    assert "function" in write_task_description.lower()
 
 
 @patch("src.workflow2.runner.kickoff_with_model_fallback")

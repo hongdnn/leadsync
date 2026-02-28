@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeadSync Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-void:#060a10;
+  --bg-primary:#0b1120;
+  --bg-panel:#0f1729;
+  --bg-surface:#131d33;
+  --bg-elevated:#182440;
+  --border:#1a2744;
+  --border-glow:#1e3a5f;
+  --text-primary:#c8d6e5;
+  --text-dim:#5a6f8a;
+  --text-ghost:#2d3f5c;
+  --cyan:#00e5ff;
+  --cyan-dim:#00e5ff33;
+  --green:#00ff88;
+  --green-dim:#00ff8833;
+  --amber:#ffb300;
+  --amber-dim:#ffb30033;
+  --red:#ff3d5a;
+  --red-dim:#ff3d5a33;
+  --blue:#4d8bff;
+  --blue-dim:#4d8bff33;
+  --purple:#a86eff;
+  --scanline:rgba(0,229,255,0.015);
+}
+html{font-size:14px}
+body{
+  background:var(--bg-void);
+  color:var(--text-primary);
+  font-family:'JetBrains Mono',monospace;
+  overflow:hidden;
+  height:100vh;
+  position:relative;
+}
+
+/* === SCANLINE OVERLAY === */
+body::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:9999;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--scanline) 2px,
+    var(--scanline) 4px
+  );
+}
+
+/* === GRID BACKGROUND === */
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:0;
+  background-image:
+    linear-gradient(var(--text-ghost) 1px, transparent 1px),
+    linear-gradient(90deg, var(--text-ghost) 1px, transparent 1px);
+  background-size:60px 60px;
+  opacity:0.08;
+}
+
+/* === LAYOUT === */
+.app{
+  display:grid;
+  grid-template-rows:auto 1fr;
+  grid-template-columns:1fr 280px;
+  height:100vh;
+  position:relative;
+  z-index:1;
+}
+
+/* === HEADER === */
+.header{
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:12px 20px;
+  background:var(--bg-primary);
+  border-bottom:1px solid var(--border);
+  position:relative;
+}
+.header::after{
+  content:'';
+  position:absolute;
+  bottom:-1px;left:0;right:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan-dim),var(--cyan),var(--cyan-dim),transparent);
+  opacity:0.6;
+}
+.logo{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
+}
+.logo-icon{
+  width:32px;height:32px;
+  position:relative;
+}
+.logo-icon svg{width:100%;height:100%}
+.logo-title{
+  font-family:'Outfit',sans-serif;
+  font-weight:800;
+  font-size:1.25rem;
+  letter-spacing:-0.02em;
+  background:linear-gradient(135deg,var(--cyan),var(--blue));
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.logo-sub{
+  font-size:0.65rem;
+  font-weight:300;
+  color:var(--text-dim);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  margin-left:-2px;
+}
+.header-spacer{flex:1}
+
+/* Connection controls */
+.conn-group{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.url-input{
+  background:var(--bg-surface);
+  border:1px solid var(--border);
+  color:var(--text-primary);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.75rem;
+  padding:6px 10px;
+  border-radius:4px;
+  width:320px;
+  outline:none;
+  transition:border-color 0.2s;
+}
+.url-input:focus{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan-dim)}
+.url-input::placeholder{color:var(--text-ghost)}
+.btn{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.7rem;
+  font-weight:500;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  padding:6px 14px;
+  border:1px solid var(--cyan);
+  background:var(--cyan-dim);
+  color:var(--cyan);
+  border-radius:4px;
+  cursor:pointer;
+  transition:all 0.15s;
+  white-space:nowrap;
+}
+.btn:hover{background:var(--cyan);color:var(--bg-void)}
+.btn.disconnect{border-color:var(--red);background:var(--red-dim);color:var(--red)}
+.btn.disconnect:hover{background:var(--red);color:var(--bg-void)}
+
+/* Status indicator */
+.status-pill{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:20px;
+  background:var(--bg-surface);
+  border:1px solid var(--border);
+  font-size:0.68rem;
+  font-weight:500;
+  color:var(--text-dim);
+  letter-spacing:0.04em;
+}
+.status-dot{
+  width:7px;height:7px;
+  border-radius:50%;
+  background:var(--text-ghost);
+  transition:all 0.3s;
+}
+.status-dot.connected{
+  background:var(--green);
+  box-shadow:0 0 6px var(--green),0 0 12px var(--green-dim);
+  animation:pulse-glow 2s ease-in-out infinite;
+}
+.status-dot.error{
+  background:var(--red);
+  box-shadow:0 0 6px var(--red);
+}
+@keyframes pulse-glow{
+  0%,100%{opacity:1}
+  50%{opacity:0.5}
+}
+
+/* === STREAM PANEL === */
+.stream-panel{
+  overflow-y:auto;
+  padding:16px 20px;
+  scroll-behavior:smooth;
+  position:relative;
+}
+.stream-panel::-webkit-scrollbar{width:6px}
+.stream-panel::-webkit-scrollbar-track{background:transparent}
+.stream-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.stream-panel::-webkit-scrollbar-thumb:hover{background:var(--border-glow)}
+
+.empty-state{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  height:100%;
+  gap:12px;
+  opacity:0.4;
+}
+.empty-state .blink{
+  font-size:2rem;
+  animation:blink 1s step-end infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.empty-state p{font-size:0.8rem;color:var(--text-dim)}
+
+/* Stream entries */
+.entry{
+  margin-bottom:2px;
+  animation:entry-in 0.2s ease-out;
+  line-height:1.6;
+}
+@keyframes entry-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+.entry-banner{
+  padding:6px 12px;
+  margin:12px 0 6px 0;
+  border-radius:3px;
+  font-size:0.75rem;
+  font-weight:700;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.entry-banner .ts{
+  font-weight:300;
+  font-size:0.65rem;
+  opacity:0.6;
+  margin-left:auto;
+  text-transform:none;
+  letter-spacing:0;
+}
+.entry-banner.start{
+  background:var(--blue-dim);
+  border-left:3px solid var(--blue);
+  color:var(--blue);
+}
+.entry-banner.end{
+  background:var(--green-dim);
+  border-left:3px solid var(--green);
+  color:var(--green);
+}
+.entry-banner.error{
+  background:var(--red-dim);
+  border-left:3px solid var(--red);
+  color:var(--red);
+}
+
+.entry-chunk{
+  padding:1px 0 1px 16px;
+  font-size:0.78rem;
+  color:var(--green);
+  border-left:1px solid var(--green-dim);
+  margin-left:6px;
+  word-break:break-word;
+  white-space:pre-wrap;
+}
+.entry-chunk .agent-tag{
+  color:var(--cyan);
+  font-weight:500;
+  font-size:0.7rem;
+}
+
+.entry-tool{
+  padding:3px 0 3px 16px;
+  font-size:0.75rem;
+  color:var(--amber);
+  border-left:1px solid var(--amber-dim);
+  margin-left:6px;
+}
+.entry-tool .tool-name{
+  background:var(--amber-dim);
+  padding:1px 6px;
+  border-radius:2px;
+  font-weight:500;
+  font-size:0.68rem;
+}
+
+/* === SIDEBAR === */
+.sidebar{
+  background:var(--bg-panel);
+  border-left:1px solid var(--border);
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border)}
+
+.sidebar-section{
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+}
+.sidebar-section:last-child{border-bottom:none}
+
+.section-label{
+  font-size:0.6rem;
+  font-weight:700;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:var(--text-ghost);
+  margin-bottom:10px;
+}
+
+/* Active workflow */
+.active-workflow{
+  padding:8px 10px;
+  background:var(--bg-surface);
+  border:1px solid var(--border);
+  border-radius:4px;
+  margin-bottom:6px;
+}
+.active-workflow .wf-name{
+  font-size:0.78rem;
+  font-weight:600;
+  color:var(--cyan);
+  margin-bottom:4px;
+}
+.active-workflow .wf-agent{
+  font-size:0.7rem;
+  color:var(--text-dim);
+}
+.active-workflow .wf-task{
+  font-size:0.65rem;
+  color:var(--text-ghost);
+  margin-top:2px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.no-active{
+  font-size:0.75rem;
+  color:var(--text-ghost);
+  font-style:italic;
+}
+
+/* Stats */
+.stat-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:5px 0;
+  border-bottom:1px solid var(--border);
+}
+.stat-row:last-child{border-bottom:none}
+.stat-label{font-size:0.7rem;color:var(--text-dim)}
+.stat-value{
+  font-size:0.85rem;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.stat-value.cyan{color:var(--cyan)}
+.stat-value.green{color:var(--green)}
+.stat-value.amber{color:var(--amber)}
+.stat-value.red{color:var(--red)}
+
+/* Workflow log */
+.wf-log-entry{
+  font-size:0.68rem;
+  padding:4px 0;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  justify-content:space-between;
+  gap:6px;
+}
+.wf-log-entry:last-child{border-bottom:none}
+.wf-log-name{color:var(--text-primary);font-weight:500}
+.wf-log-status{font-weight:600;font-size:0.62rem;letter-spacing:0.04em}
+.wf-log-status.ok{color:var(--green)}
+.wf-log-status.fail{color:var(--red)}
+.wf-log-status.running{color:var(--cyan);animation:blink 1.2s step-end infinite}
+
+/* Clear button */
+.clear-btn{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.65rem;
+  padding:5px 10px;
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--text-dim);
+  border-radius:3px;
+  cursor:pointer;
+  width:100%;
+  transition:all 0.15s;
+}
+.clear-btn:hover{border-color:var(--red);color:var(--red)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="2" width="28" height="28" rx="6" stroke="url(#lg)" stroke-width="2"/>
+          <path d="M10 16L15 21L22 11" stroke="url(#lg)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs><linearGradient id="lg" x1="2" y1="2" x2="30" y2="30"><stop stop-color="#00e5ff"/><stop offset="1" stop-color="#4d8bff"/></linearGradient></defs>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-title">LeadSync Live</div>
+        <div class="logo-sub">Agent Telemetry</div>
+      </div>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="conn-group">
+      <input type="text" id="wsUrl" class="url-input" placeholder="ws://localhost:8000/ws/stream">
+      <button id="connectBtn" class="btn" onclick="toggleConnection()">Connect</button>
+      <div class="status-pill">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Offline</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- STREAM -->
+  <main class="stream-panel" id="streamPanel">
+    <div class="empty-state" id="emptyState">
+      <div class="blink">_</div>
+      <p>Awaiting agent telemetry...</p>
+      <p style="font-size:0.7rem">Connect to backend to start streaming</p>
+    </div>
+  </main>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="section-label">Active</div>
+      <div id="activeArea"><div class="no-active">No active workflow</div></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="section-label">Session Stats</div>
+      <div class="stat-row"><span class="stat-label">Chunks</span><span class="stat-value cyan" id="statChunks">0</span></div>
+      <div class="stat-row"><span class="stat-label">Tool Calls</span><span class="stat-value amber" id="statTools">0</span></div>
+      <div class="stat-row"><span class="stat-label">Completed</span><span class="stat-value green" id="statCompleted">0</span></div>
+      <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value red" id="statErrors">0</span></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="section-label">Workflow Log</div>
+      <div id="wfLog"><div class="no-active">No workflows yet</div></div>
+    </div>
+    <div class="sidebar-section">
+      <button class="clear-btn" onclick="clearStream()">Clear Stream</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+(function(){
+  /* --- State --- */
+  let ws = null;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  let autoScroll = true;
+  let stats = { chunks: 0, tools: 0, completed: 0, errors: 0 };
+  let activeWorkflows = {};
+  let wfLog = [];
+  let hasEntries = false;
+
+  /* --- Elements --- */
+  const panel   = document.getElementById('streamPanel');
+  const empty   = document.getElementById('emptyState');
+  const urlIn   = document.getElementById('wsUrl');
+  const btn     = document.getElementById('connectBtn');
+  const dot     = document.getElementById('statusDot');
+  const stText  = document.getElementById('statusText');
+  const activeArea = document.getElementById('activeArea');
+  const wfLogEl = document.getElementById('wfLog');
+
+  /* --- URL from query param --- */
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('ws')) urlIn.value = params.get('ws');
+
+  /* --- Scroll detection --- */
+  panel.addEventListener('scroll', function(){
+    const gap = panel.scrollHeight - panel.scrollTop - panel.clientHeight;
+    autoScroll = gap < 60;
+  });
+
+  function scrollToBottom(){
+    if (autoScroll) panel.scrollTop = panel.scrollHeight;
+  }
+
+  /* --- Connection --- */
+  window.toggleConnection = function(){
+    if (ws && ws.readyState <= 1) { disconnect(); return; }
+    connect();
+  };
+
+  function connect(){
+    const url = urlIn.value.trim() || 'ws://localhost:8000/ws/stream';
+    urlIn.value = url;
+    clearTimeout(reconnectTimer);
+    try { ws = new WebSocket(url); } catch(e){ setStatus('error','Error'); return; }
+    setStatus('','Connecting...');
+    btn.textContent = '...';
+
+    ws.onopen = function(){
+      reconnectDelay = 1000;
+      setStatus('connected','Online');
+      btn.textContent = 'Disconnect';
+      btn.classList.add('disconnect');
+      addSystemEntry('Connected to ' + url);
+    };
+
+    ws.onmessage = function(e){
+      try { handleEvent(JSON.parse(e.data)); } catch(err){ console.warn('Bad msg', err); }
+    };
+
+    ws.onclose = function(){
+      setStatus('','Offline');
+      btn.textContent = 'Connect';
+      btn.classList.remove('disconnect');
+      addSystemEntry('Disconnected. Reconnecting in ' + (reconnectDelay/1000).toFixed(0) + 's...');
+      scheduleReconnect();
+    };
+
+    ws.onerror = function(){
+      setStatus('error','Error');
+    };
+  }
+
+  function disconnect(){
+    clearTimeout(reconnectTimer);
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    setStatus('','Offline');
+    btn.textContent = 'Connect';
+    btn.classList.remove('disconnect');
+    addSystemEntry('Disconnected by user.');
+  }
+
+  function scheduleReconnect(){
+    reconnectTimer = setTimeout(function(){
+      if (!ws || ws.readyState > 1) connect();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+  }
+
+  function setStatus(cls, text){
+    dot.className = 'status-dot' + (cls ? ' '+cls : '');
+    stText.textContent = text;
+  }
+
+  /* --- Event handling --- */
+  function handleEvent(ev){
+    const t = ev.type;
+    if (t === 'workflow_start')  onWorkflowStart(ev);
+    else if (t === 'workflow_end')   onWorkflowEnd(ev);
+    else if (t === 'workflow_error') onWorkflowError(ev);
+    else if (t === 'chunk')          onChunk(ev);
+    else if (t === 'tool_call')      onToolCall(ev);
+    scrollToBottom();
+  }
+
+  function onWorkflowStart(ev){
+    ensureEntries();
+    activeWorkflows[ev.workflow] = { agent:'', task:'', startTime: Date.now() };
+    updateActiveArea();
+    addWfLog(ev.workflow, 'running');
+    const el = makeBanner('start', ev.workflow + ' started', ev.timestamp);
+    panel.appendChild(el);
+  }
+
+  function onWorkflowEnd(ev){
+    delete activeWorkflows[ev.workflow];
+    updateActiveArea();
+    stats.completed++;
+    updateStats();
+    addWfLog(ev.workflow, 'ok');
+    const el = makeBanner('end', ev.workflow + ' completed', ev.timestamp);
+    panel.appendChild(el);
+  }
+
+  function onWorkflowError(ev){
+    delete activeWorkflows[ev.workflow];
+    updateActiveArea();
+    stats.errors++;
+    updateStats();
+    addWfLog(ev.workflow, 'fail');
+    const el = makeBanner('error', ev.workflow + ' — ' + (ev.content || 'error'), ev.timestamp);
+    panel.appendChild(el);
+  }
+
+  function onChunk(ev){
+    ensureEntries();
+    stats.chunks++;
+    updateStats();
+    if (ev.workflow && activeWorkflows[ev.workflow]){
+      if (ev.agent_role) activeWorkflows[ev.workflow].agent = ev.agent_role;
+      if (ev.task_name)  activeWorkflows[ev.workflow].task = ev.task_name;
+      updateActiveArea();
+    }
+    const el = document.createElement('div');
+    el.className = 'entry entry-chunk';
+    let html = '';
+    if (ev.agent_role) html += '<span class="agent-tag">[' + esc(ev.agent_role) + ']</span> ';
+    html += esc(ev.content || '');
+    el.innerHTML = html;
+    panel.appendChild(el);
+  }
+
+  function onToolCall(ev){
+    ensureEntries();
+    stats.tools++;
+    updateStats();
+    const el = document.createElement('div');
+    el.className = 'entry entry-tool';
+    let html = '';
+    if (ev.tool_name) html += '<span class="tool-name">' + esc(ev.tool_name) + '</span> ';
+    if (ev.agent_role) html += '<span style="color:var(--text-dim)">[' + esc(ev.agent_role) + ']</span> ';
+    html += esc(ev.content || '');
+    el.innerHTML = html;
+    panel.appendChild(el);
+  }
+
+  /* --- UI Helpers --- */
+  function ensureEntries(){
+    if (!hasEntries){ empty.style.display='none'; hasEntries=true; }
+  }
+
+  function addSystemEntry(msg){
+    ensureEntries();
+    const el = document.createElement('div');
+    el.className = 'entry';
+    el.style.cssText = 'font-size:0.7rem;color:var(--text-ghost);padding:2px 0;';
+    el.textContent = '// ' + msg;
+    panel.appendChild(el);
+    scrollToBottom();
+  }
+
+  function makeBanner(cls, text, ts){
+    const el = document.createElement('div');
+    el.className = 'entry entry-banner ' + cls;
+    const icon = cls==='start' ? '\u25B6' : cls==='end' ? '\u2714' : '\u2718';
+    el.innerHTML = icon + ' ' + esc(text) + '<span class="ts">' + fmtTime(ts) + '</span>';
+    return el;
+  }
+
+  function fmtTime(iso){
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    } catch(e){ return ''; }
+  }
+
+  function esc(s){ const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+
+  function updateStats(){
+    document.getElementById('statChunks').textContent    = stats.chunks;
+    document.getElementById('statTools').textContent     = stats.tools;
+    document.getElementById('statCompleted').textContent = stats.completed;
+    document.getElementById('statErrors').textContent    = stats.errors;
+  }
+
+  function updateActiveArea(){
+    const keys = Object.keys(activeWorkflows);
+    if (!keys.length){ activeArea.innerHTML='<div class="no-active">No active workflow</div>'; return; }
+    let html = '';
+    keys.forEach(function(k){
+      const w = activeWorkflows[k];
+      html += '<div class="active-workflow">';
+      html += '<div class="wf-name">\u25CF ' + esc(k) + '</div>';
+      if (w.agent) html += '<div class="wf-agent">Agent: ' + esc(w.agent) + '</div>';
+      if (w.task)  html += '<div class="wf-task" title="' + esc(w.task) + '">Task: ' + esc(w.task) + '</div>';
+      html += '</div>';
+    });
+    activeArea.innerHTML = html;
+  }
+
+  function addWfLog(name, status){
+    /* Update existing or add new */
+    const existing = wfLog.find(function(e){ return e.name === name && e.status === 'running'; });
+    if (existing && status !== 'running'){ existing.status = status; }
+    else { wfLog.push({ name: name, status: status }); }
+    if (wfLog.length > 20) wfLog = wfLog.slice(-20);
+    renderWfLog();
+  }
+
+  function renderWfLog(){
+    if (!wfLog.length){ wfLogEl.innerHTML='<div class="no-active">No workflows yet</div>'; return; }
+    let html = '';
+    for (let i=wfLog.length-1; i>=0; i--){
+      const e = wfLog[i];
+      const cls = e.status === 'ok' ? 'ok' : e.status === 'fail' ? 'fail' : 'running';
+      const label = e.status === 'ok' ? 'DONE' : e.status === 'fail' ? 'FAIL' : 'RUN';
+      html += '<div class="wf-log-entry"><span class="wf-log-name">' + esc(e.name) + '</span><span class="wf-log-status '+cls+'">' + label + '</span></div>';
+    }
+    wfLogEl.innerHTML = html;
+  }
+
+  window.clearStream = function(){
+    panel.innerHTML = '';
+    hasEntries = false;
+    stats = { chunks:0, tools:0, completed:0, errors:0 };
+    activeWorkflows = {};
+    wfLog = [];
+    updateStats();
+    updateActiveArea();
+    renderWfLog();
+    panel.innerHTML = '<div class="empty-state" id="emptyState"><div class="blink">_</div><p>Awaiting agent telemetry...</p></div>';
+  };
+})();
+</script>
+</body>
+</html>

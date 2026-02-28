@@ -5,6 +5,8 @@ Exports: build_done_scan_crew
 
 from typing import Any
 
+from src.stream import stream_enabled
+
 from src.workflow6.task_descriptions import scan_description, summarize_description
 
 
@@ -74,5 +76,6 @@ def build_done_scan_crew(
         tasks=[scan_task, summarize_task],
         process=runtime.Process.sequential,
         verbose=True,
+        stream=stream_enabled(),
     )
     return scan_task, summarize_task, agents, crew

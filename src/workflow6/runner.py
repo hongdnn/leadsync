@@ -80,6 +80,7 @@ def run_workflow6(
         jira_tools=jira_tools,
         issue_key=issue.issue_key,
         summary_text=summary_text,
+        ticket_summary=issue.summary,
     )
     logger.info(
         "WF6 done-scan for %s: comment=%s model=%s",
