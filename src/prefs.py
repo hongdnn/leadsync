@@ -37,17 +37,26 @@ def append_preference(text: str) -> None:
     Append a new rule bullet to the Quick Rules section of the preferences file.
 
     Creates the section at end of file if it does not exist.
-    If the section already exists, appends after the last bullet.
+    If the section already exists, appends at end of file (places bullets
+    after the Quick Rules section when it is the last section in the file).
 
     Args:
-        text: Plain-text rule to append (no leading dash needed).
+        text: Plain-text rule to append. Leading/trailing whitespace is stripped.
+            No leading dash needed.
     Side effects:
         Writes to config/tech-lead-context.md on disk.
     """
     if not text.strip():
         raise ValueError("Preference text cannot be empty or whitespace.")
-    content = TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
-    new_bullet = f"- {text}"
+    try:
+        content = TECH_LEAD_CONTEXT_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        logger.error("Tech lead context file not found: %s", TECH_LEAD_CONTEXT_PATH)
+        raise RuntimeError(
+            f"Tech lead preferences file missing: {TECH_LEAD_CONTEXT_PATH}. "
+            "Create config/tech-lead-context.md to enable preference loading."
+        ) from None
+    new_bullet = f"- {text.strip()}"
     if _QUICK_RULES_HEADER in content:
         content = content.rstrip("\n") + f"\n{new_bullet}\n"
     else:

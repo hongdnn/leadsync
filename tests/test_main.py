@@ -233,3 +233,15 @@ def test_slack_prefs_unknown_command_returns_400(mock_append, client):
     assert response.status_code == 400
     assert "Usage" in response.json()["detail"]
     mock_append.assert_not_called()
+
+
+@patch("src.main.append_preference")
+def test_slack_prefs_unexpected_error_returns_500(mock_append, client):
+    mock_append.side_effect = Exception("disk error")
+    response = client.post(
+        "/slack/prefs",
+        content=b"text=add+Some+rule",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 500
+    assert "disk error" in response.json()["detail"]
