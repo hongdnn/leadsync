@@ -1,7 +1,7 @@
 """
 src/main.py
 FastAPI application — all endpoints for LeadSync.
-Endpoints: GET /health, POST /webhooks/jira, POST /digest/trigger, POST /slack/commands
+Endpoints: GET /health, POST /webhooks/jira, POST /digest/trigger, POST /slack/commands, POST /slack/prefs
 """
 
 from typing import Any
@@ -187,7 +187,12 @@ async def slack_prefs(request: Request) -> dict[str, str]:
     if not rule_text:
         raise HTTPException(status_code=400, detail="Rule text cannot be empty.")
 
-    append_preference(rule_text)
+    try:
+        append_preference(rule_text)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Preference write failed: {exc}") from exc
     return {
         "response_type": "ephemeral",
         "text": f"Preference added: {rule_text}",

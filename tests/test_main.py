@@ -221,3 +221,15 @@ def test_slack_prefs_ssl_check_returns_ok(mock_append, client):
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     mock_append.assert_not_called()
+
+
+@patch("src.main.append_preference")
+def test_slack_prefs_unknown_command_returns_400(mock_append, client):
+    response = client.post(
+        "/slack/prefs",
+        content=b"text=delete+everything",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 400
+    assert "Usage" in response.json()["detail"]
+    mock_append.assert_not_called()
