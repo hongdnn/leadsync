@@ -123,6 +123,7 @@ def test_retrieve_task_contains_classification_instructions(
     retrieve_call = mock_task_cls.call_args_list[0]
     desc = retrieve_call[1]["description"]
     assert "QUESTION_TYPE" in desc
+    assert "PROGRESS" in desc
     assert "IMPLEMENTATION" in desc
     assert "GENERAL" in desc
 
@@ -151,7 +152,10 @@ def test_reason_task_contains_conditional_branches(
 
     reason_call = mock_task_cls.call_args_list[1]
     desc = reason_call[1]["description"]
+    assert "QUESTION_TYPE: PROGRESS" in desc
     assert "QUESTION_TYPE: GENERAL" in desc
     assert "QUESTION_TYPE: IMPLEMENTATION" in desc
+    assert "Here is summary of previous progress related to tasks with the same label" in desc
+    assert "ticket enriched" in desc
     assert "Do NOT reference or apply any tech lead preferences" in desc
     assert "Prefer async" in desc

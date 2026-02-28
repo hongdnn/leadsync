@@ -207,6 +207,16 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
         from src.leadsync_crew import run_leadsync_crew
         run_leadsync_crew(payload=SAMPLE_PAYLOAD)
 
+    gather_desc = mock_task_cls.call_args_list[0][1]["description"]
+    reason_desc = mock_task_cls.call_args_list[1][1]["description"]
+    propagate_desc = mock_task_cls.call_args_list[2][1]["description"]
+    assert "latest 10 completed same-label tickets" in gather_desc
+    assert "source files or modules likely impacted" in gather_desc
+    assert "same-label completed work" in reason_desc
+    assert "technical execution guidance" in propagate_desc
+    assert "without markdown syntax" in propagate_desc
+    assert "This ticket" in propagate_desc
+
     prompt_file = tmp_path / "prompt-LEADS-1.md"
     assert prompt_file.exists()
     prompt_markdown = prompt_file.read_text(encoding="utf-8")

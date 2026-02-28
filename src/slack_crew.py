@@ -9,6 +9,7 @@ import os
 
 from crewai import Agent, Crew, Process, Task
 
+from src.jira_history import build_same_label_progress_context, load_issue_project_and_label
 from src.prefs import load_preferences
 from src.shared import (
     CrewRunResult,
@@ -64,13 +65,22 @@ def run_slack_crew(
     composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
     slack_channel_id = channel_id or _required_env("SLACK_CHANNEL_ID")
     team_preferences = load_preferences()
+    jira_tools = build_tools(user_id=composio_user_id, toolkits=["JIRA"])
+    project_key, primary_label = load_issue_project_and_label(tools=jira_tools, issue_key=ticket_key)
+    same_label_history = build_same_label_progress_context(
+        tools=jira_tools,
+        project_key=project_key,
+        label=primary_label,
+        exclude_issue_key=ticket_key,
+        limit=10,
+    )
 
     retriever = Agent(
         role="Context Retriever",
         goal="Fetch Jira context needed to answer the developer question.",
         backstory="You collect concrete ticket facts and comments before reasoning.",
         verbose=True,
-        tools=build_tools(user_id=composio_user_id, toolkits=["JIRA"]),
+        tools=jira_tools,
         llm=model,
     )
     reasoner = Agent(
@@ -95,14 +105,20 @@ def run_slack_crew(
             "- Include summary, description, labels, assignee, and comments.\n"
             f"- Developer question: {question}\n"
             "After fetching the ticket, classify the developer question using this rule:\n"
+            "  PROGRESS: asks what has already been completed previously for this same label/category,\n"
+            "  asks about phase progress, or asks what similar prior tickets already delivered.\n"
             "  IMPLEMENTATION: asks HOW to do something, WHICH approach to take, "
             "SHOULD I use X or Y, HOW TO structure or design something.\n"
             "  GENERAL: asks WHAT the ticket is about, WHO is assigned, WHEN it is due, "
             "status, description, or acceptance criteria.\n"
             "Output the classification as the FIRST line of your response in this exact format:\n"
+            "QUESTION_TYPE: PROGRESS\n"
+            "or\n"
             "QUESTION_TYPE: IMPLEMENTATION\n"
             "or\n"
-            "QUESTION_TYPE: GENERAL"
+            "QUESTION_TYPE: GENERAL\n\n"
+            f"Same-label prior progress context:\n{same_label_history}\n"
+            f"Current ticket primary label: {primary_label or 'N/A'}"
         ),
         expected_output="QUESTION_TYPE label on the first line, followed by structured Jira ticket context.",
         agent=retriever,
@@ -111,14 +127,19 @@ def run_slack_crew(
         description=(
             f"Question: {question}\n\n"
             "Read the QUESTION_TYPE from the retriever output and follow the matching branch:\n\n"
+            "If QUESTION_TYPE: PROGRESS\n"
+            "- Start with this exact line: 'Here is summary of previous progress related to tasks with the same label:'.\n"
+            "- Then provide 3-6 bullets with completed ticket keys and what was completed earlier.\n"
+            "- End with one short line: 'What this means now: ...'.\n"
+            "- Do NOT include meta/system wording (e.g., 'ticket enriched', 'ready for development').\n\n"
             "If QUESTION_TYPE: GENERAL\n"
             "- Return only factual information from the ticket in 1-2 sentences.\n"
-            "- Do NOT reference or apply any tech lead preferences.\n"
+            "- Do NOT reference or apply any tech lead preferences unless question explicitly asks for progress.\n"
             "- Do NOT give implementation opinions.\n\n"
             "If QUESTION_TYPE: IMPLEMENTATION\n"
             "- Apply the following tech lead guidance to give an opinionated recommendation:\n"
             f"---\n{team_preferences}\n---\n"
-            "- Return a direct recommendation in 2-4 sentences.\n"
+            "- Return a direct recommendation in 2-4 sentences with one bullet list of key tradeoffs.\n"
             "- Mention tradeoffs when they matter."
         ),
         expected_output=(
@@ -137,7 +158,7 @@ def run_slack_crew(
         description=(
             f"Post the answer to Slack channel {slack_channel_id}.\n"
             f"{thread_instruction}"
-            f"- Prefix with '[{ticket_key}] Suggested approach:'."
+            f"- Prefix with '[{ticket_key}] LeadSync summary:'."
         ),
         expected_output="Confirmation that Slack message was posted.",
         agent=responder,

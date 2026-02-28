@@ -12,6 +12,7 @@ from typing import Any
 from crewai import Agent, Crew, Process, Task
 
 from src.config import Config
+from src.jira_history import build_same_label_progress_context, extract_primary_label
 from src.shared import CrewRunResult
 from src.tools.jira_tools import get_agent_tools
 
@@ -21,6 +22,12 @@ ARTIFACT_DIR = Path("artifacts") / "workflow1"
 
 def _tool_name_set(tools: list[Any]) -> set[str]:
     return {getattr(tool, "name", "").upper() for tool in tools}
+
+
+def _has_tool_prefix(tool_names: set[str], prefix: str) -> bool:
+    """Return whether any tool name starts with prefix."""
+    upper = prefix.upper()
+    return any(name.startswith(upper) for name in tool_names)
 
 
 def _safe_dict(value: Any) -> dict[str, Any]:
@@ -76,6 +83,28 @@ def _extract_task_output(task: Task) -> str:
     result = getattr(output, "result", None)
     if isinstance(result, str):
         return result.strip()
+    return ""
+
+
+def _extract_text(value: Any) -> str:
+    """
+    Extract plain text from string/ADF-like values.
+
+    Args:
+        value: Candidate content from Jira payload.
+    Returns:
+        Best-effort plain text.
+    """
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts = [_extract_text(item) for item in value]
+        return " ".join(part for part in parts if part)
+    if isinstance(value, dict):
+        text_value = value.get("text")
+        if isinstance(text_value, str):
+            return text_value.strip()
+        return _extract_text(value.get("content"))
     return ""
 
 
@@ -272,6 +301,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     has_jira_edit_issue = "JIRA_EDIT_ISSUE" in tool_names
     has_jira_add_comment = "JIRA_ADD_COMMENT" in tool_names
     has_jira_add_attachment = "JIRA_ADD_ATTACHMENT" in tool_names
+    has_github_tools = _has_tool_prefix(tool_names, "GITHUB_")
 
     issue = _safe_dict(payload.get("issue"))
     if not issue:
@@ -280,9 +310,11 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
 
     issue_key = issue.get("key", issue.get("id", "UNKNOWN"))
     summary = fields.get("summary", issue.get("summary", ""))
+    issue_description = _extract_text(fields.get("description", issue.get("description", "")))
     labels = fields.get("labels", issue.get("labels", []))
     if not isinstance(labels, list):
         labels = []
+    primary_label = extract_primary_label(labels)
 
     assignee_data = _safe_dict(fields.get("assignee"))
     if not assignee_data:
@@ -311,11 +343,21 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     common_context = (
         f"Issue key: {issue_key}\n"
         f"Summary: {summary}\n"
+        f"Description: {issue_description or 'No description provided.'}\n"
         f"Labels: {labels}\n"
+        f"Primary label: {primary_label or 'N/A'}\n"
         f"Assignee: {assignee}\n"
         f"Project: {project_key}\n"
         f"Components: {component_names}\n"
     )
+    same_label_history = build_same_label_progress_context(
+        tools=tools,
+        project_key=project_key,
+        label=primary_label,
+        exclude_issue_key=str(issue_key),
+        limit=10,
+    )
+    common_context += f"Same-label history context:\n{same_label_history}\n"
 
     gatherer = Agent(
         role="Context Gatherer",
@@ -359,11 +401,16 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             f"Available tool names: {sorted(tool_names)}\n"
             "Rules:\n"
             f"- JIRA_GET_ISSUE available: {has_jira_get_issue}\n"
+            f"- Any GITHUB_* tools available: {has_github_tools}\n"
             "- If unavailable, do not call Jira read tools and use payload context only.\n"
+            "- If GITHUB tools are available, scan repository context for files/modules that match the "
+            "ticket summary, description, labels, and components.\n"
             "Required output:\n"
             "1) Relevant linked/recent Jira issue summary\n"
             "2) Last 24h main-branch commits related to this issue scope\n"
             "3) Risks/constraints discovered\n"
+            "4) Summary of previous progress from the latest 10 completed same-label tickets\n"
+            "5) 3-8 source files or modules likely impacted, with one-line rationale each\n"
         ),
         expected_output="A structured context summary with commits, related issues, and constraints.",
         agent=gatherer,
@@ -378,8 +425,11 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             "   - ## Constraints\n"
             "   - ## Implementation Rules\n"
             "   - ## Expected Output\n"
-            f"2) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
-            "3) Implementation output checklist (code/tests/docs)\n"
+            "2) In the Context section, include a concise summary of previous same-label completed "
+            "work so the assignee sees what has already been completed in this development phase.\n"
+            f"3) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
+            "4) Add implementation output checklist (code/tests/docs)\n"
+            "5) Keep tone technical and execution-oriented. Avoid broad ticket summaries.\n"
             f"{common_context}"
         ),
         expected_output=(
@@ -398,9 +448,19 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             f"- JIRA_ADD_ATTACHMENT available: {has_jira_add_attachment}\n"
             "Rules:\n"
             "- Always use issue key from context.\n"
-            "- If JIRA_ADD_COMMENT is available, add a comment with a short summary and prompt-ready note.\n"
+            "- If JIRA_ADD_COMMENT is available, add plain-text technical execution guidance without markdown syntax.\n"
+            "- Comment structure (plain text, no '#', no bullet markers):\n"
+            "  1) One line: 'Previous same-label progress:'\n"
+            "  2) 3-5 short lines of completed technical work from recent same-label tickets.\n"
+            "  3) One line: 'Recommended implementation path for current task:'\n"
+            "  4) 3-5 short lines: concrete steps, likely files/modules, validation checks.\n"
             "- Only update issue description when JIRA_EDIT_ISSUE is available.\n"
+            "- For issue description updates, write technical execution guidance (approach, code areas, risks, test plan) "
+            "instead of a generic summary.\n"
+            "- For issue description updates, avoid opening like 'This ticket ...' or 'This task ...'.\n"
             "- Mention that a prompt markdown attachment will be added when available.\n"
+            "- Do NOT write meta/system statements such as 'the ticket has been enriched' or "
+            "'it is now ready for development'. Keep wording developer-facing and concrete.\n"
             "- Never call any tool that is not listed in available tool names."
         ),
         expected_output="Confirmation of Jira write-back actions taken.",

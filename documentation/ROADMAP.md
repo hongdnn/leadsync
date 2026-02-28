@@ -16,6 +16,9 @@ Use this file as the live execution board.
 - [x] Decision recorded: `src/main.py` intentionally exceeds the 150-line guideline. CLAUDE.md §8 (150-line limit) conflicts with §4 ("All endpoints in main.py. No router splitting."). Both rules cannot be satisfied simultaneously given the number of required endpoints. Ruling: the no-router-splitting rule takes precedence for this hackathon; the line limit is waived for main.py only.
 - [x] Decision recorded: `src/prefs.py` added as a fourth source module (alongside the three crew files) to provide shared file I/O for tech lead preferences. This is a net-new module outside the original three-workflow crew structure — both developers agreed this is the correct layer for shared file access, not inline in any single crew file.
 - [x] Decision recorded: Slack Q&A now uses conditional preference injection. `QUESTION_TYPE` is classified in retrieval output and team preferences are applied only for implementation questions; general questions return factual ticket info.
+- [x] Decision recorded: Workflow 1 same-label historical progress is written in Jira comments only (`### Previous Progress (Same Label)`), not in the description body.
+- [x] Decision recorded: Same-label precedent retrieval window increased from 5 to 10 completed tickets for richer demo context.
+- [x] Decision recorded: Workflow 1 Jira comment/description write-back is now plain-text and technical (no markdown heading markers), focused on implementation guidance rather than ticket-style summarization.
 
 ---
 
@@ -93,7 +96,7 @@ Use this file as the live execution board.
 - [x] Slack response behavior is conditional: factual ticket answers for GENERAL questions, opinionated guidance for IMPLEMENTATION questions.
 - [x] Crew kickoff has try/except with readable logs.
 - [x] Model fallback logic for `-latest` + `NOT_FOUND` is implemented.
-- [ ] Robustness enhancement: include precedent from last 5 completed same-category Jira tickets.
+- [x] Robustness enhancement: include precedent from last 10 completed same-category Jira tickets.
 
 ### Dev 1 (Endpoint + E2E)
 - [x] `POST /slack/commands` supports Slack form payload (`text`) and JSON test payload.
@@ -146,11 +149,11 @@ Use this file as the live execution board.
 ## Phase 6 — Robustness Enhancements (Hackathon Scope)
 
 ### Jira History Context (Dev 2)
-- [ ] Define same-category ticket selection rule.
-- [ ] Retrieve last 5 completed tickets in category.
-- [ ] Summarize patterns from completed tickets (approach, pitfalls, constraints).
-- [ ] Inject this precedent context into Workflow 3 reasoning prompt.
-- [ ] Add/extend tests for this behavior.
+- [x] Define same-category ticket selection rule.
+- [x] Retrieve last 10 completed tickets in category.
+- [x] Summarize patterns from completed tickets (approach, pitfalls, constraints).
+- [x] Inject this precedent context into Workflow 3 reasoning prompt.
+- [x] Add/extend tests for this behavior.
 
 ### GitHub Intelligence Upgrade (Dev 1 + Dev 2)
 - [ ] Define daily analysis trigger approach.
@@ -203,8 +206,11 @@ Use this file as the live execution board.
 
 | Date | Owner | Update |
 |------|-------|--------|
+| 2026-02-28 | Dev 2 | Refined Workflow 1 Jira write-back instructions to be plain-text and technical (non-markdown, non-meta), added explicit repository file/module targeting guidance when GitHub tools are available, and expanded same-label history context to include completed ticket description excerpts. |
 | 2026-02-28 | Dev 1 | Added `railway.json` with explicit Railpack start command (`uvicorn src.main:app --host 0.0.0.0 --port $PORT`) and `/health` healthcheck to resolve `railway up` auto-detection failure. |
 | 2026-02-28 | Dev 2 | Added minimal backend/frontend/db ruleset template files under `templates/` and improved Workflow 1 ruleset matching to select related rulesets from Jira labels/components; added tests for matching behavior. |
 | 2026-02-28 | Dev 2 | Implemented conditional preference injection in Workflow 3 (`QUESTION_TYPE` classification + conditional reasoning branch) and added 2 Slack crew prompt tests; suite now 51 passing tests. |
 | 2026-02-28 | Dev 2 | Implemented Workflow 1 deterministic prompt artifact flow: generates `artifacts/workflow1/prompt-[ticket-key].md` with required sections and attaches via `JIRA_ADD_ATTACHMENT`; added tests for section structure and attachment failure handling. |
 | 2026-02-28 | Dev 2 | Fixed Workflow 1 Jira attachment bug where filename-only upload failed; now passes absolute path for both `local_file_path` and `file_to_upload`, adds explicit file existence check, and extends test coverage. |
+| 2026-02-28 | Dev 2 | Implemented same-label Jira history integration: Workflow 1 now injects same-label precedent and requires `### Previous Progress (Same Label)` in Jira comment output; Workflow 3 now includes this history and supports `QUESTION_TYPE: PROGRESS`; added shared `jira_history` helper tests and crew prompt assertions. |
+| 2026-02-28 | Dev 2 | Improved demo-facing wording for Workflow 1/3 responses (explicit previous-progress summary template, removed meta 'ticket enriched' style language), and expanded same-label retrieval window to latest 10 completed tickets with updated tests. |
