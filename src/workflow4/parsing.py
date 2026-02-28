@@ -19,6 +19,8 @@ class PRContext:
     title: str
     body: str
     branch: str
+    base_sha: str
+    head_sha: str
     jira_key: str
 
 
@@ -41,6 +43,7 @@ def parse_pr_context(payload: dict[str, Any]) -> PRContext:
     repository = payload.get("repository", {}) if isinstance(payload.get("repository"), dict) else {}
     owner_obj = repository.get("owner", {}) if isinstance(repository.get("owner"), dict) else {}
     head = pr.get("head", {}) if isinstance(pr.get("head"), dict) else {}
+    base = pr.get("base", {}) if isinstance(pr.get("base"), dict) else {}
 
     title = _safe_str(pr.get("title"))
     body = _safe_str(pr.get("body"))
@@ -56,5 +59,7 @@ def parse_pr_context(payload: dict[str, Any]) -> PRContext:
         title=title,
         body=body,
         branch=branch,
+        base_sha=_safe_str(base.get("sha")),
+        head_sha=_safe_str(head.get("sha")),
         jira_key=jira_key,
     )
