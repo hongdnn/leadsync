@@ -1,11 +1,10 @@
-import os
 from dataclasses import dataclass
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
 
-
-DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
+from src.config import Config
+from src.tools.jira_tools import get_agent_tools
 
 
 @dataclass
@@ -14,29 +13,19 @@ class CrewRunResult:
     model: str
 
 
-def _required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"Missing required env var: {name}")
-    return value
-
-
-def _build_tools(user_id: str) -> list[Any]:
-    _required_env("COMPOSIO_API_KEY")
-    os.environ.setdefault("COMPOSIO_CACHE_DIR", ".composio-cache")
-    from composio import Composio
-    from composio_crewai import CrewAIProvider
-
-    composio = Composio(provider=CrewAIProvider())
-    return composio.tools.get(user_id=user_id, toolkits=["JIRA", "GITHUB"])
+def _tool_name_set(tools: list[Any]) -> set[str]:
+    return {getattr(tool, "name", "").upper() for tool in tools}
 
 
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
-    # gemini_api_key = _required_env("GEMINI_API_KEY")
-    # os.environ.setdefault("GOOGLE_API_KEY", gemini_api_key)
-    model = os.getenv("LEADSYNC_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
-    tools = _build_tools(user_id=composio_user_id)
+    Config.require_env("GOOGLE_API_KEY")
+    model = Config.get_gemini_model()
+    tools = get_agent_tools()
+    tool_names = _tool_name_set(tools)
+
+    has_jira_get_issue = "JIRA_GET_ISSUE" in tool_names
+    has_jira_edit_issue = "JIRA_EDIT_ISSUE" in tool_names
+    has_jira_add_comment = "JIRA_ADD_COMMENT" in tool_names
 
     issue_key = payload.get("issue", {}).get("key", "UNKNOWN")
     summary = payload.get("issue", {}).get("fields", {}).get("summary", "")
@@ -72,7 +61,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
             "commits on the main branch."
         ),
         verbose=True,
-        tools=tools,
+        tools=tools if has_jira_get_issue else [],
         llm=model,
     )
 
@@ -101,8 +90,12 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
 
     gather_task = Task(
         description=(
-            "Use Jira and GitHub tools to gather context for this issue.\n"
+            "Gather context for this issue.\n"
             f"{common_context}\n"
+            f"Available tool names: {sorted(tool_names)}\n"
+            "Rules:\n"
+            f"- JIRA_GET_ISSUE available: {has_jira_get_issue}\n"
+            "- If unavailable, do not call Jira read tools and use payload context only.\n"
             "Required output:\n"
             "1) Relevant linked/recent Jira issue summary\n"
             "2) Last 24h main-branch commits related to this issue scope\n"
@@ -130,9 +123,14 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
     propagate_task = Task(
         description=(
             "Write back to Jira:\n"
-            "1) Update issue description with a short AI Context section\n"
-            "2) Add a comment that prompt/rules are ready\n"
-            "Issue key must be used from context."
+            f"Available tool names: {sorted(tool_names)}\n"
+            f"- JIRA_ADD_COMMENT available: {has_jira_add_comment}\n"
+            f"- JIRA_EDIT_ISSUE available: {has_jira_edit_issue}\n"
+            "Rules:\n"
+            "- Always use issue key from context.\n"
+            "- If JIRA_ADD_COMMENT is available, add a comment with a short summary and prompt-ready note.\n"
+            "- Only update issue description when JIRA_EDIT_ISSUE is available.\n"
+            "- Never call any tool that is not listed in available tool names."
         ),
         expected_output="Confirmation of Jira write-back actions taken.",
         agent=propagator,
