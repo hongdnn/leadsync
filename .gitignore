@@ -40,6 +40,9 @@ htmlcov/
 # Logs
 *.log
 
+# Worktrees
+.worktrees/
+
 # Ramis Added
 .claude/
 .specstory/
@@ -50,3 +53,4 @@ htmlcov/
 .cursor/
 .claudeignore
 CLAUDE.md
+.geminiignore
