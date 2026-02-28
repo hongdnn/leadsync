@@ -1,4 +1,4 @@
-# LeadSync — Claude Code Agent Instructions
+# LeadSync — Codex Agent Instructions
 > Read this entirely before writing any code. Hackathon MVP — ruthless scope discipline required.
 
 ---
