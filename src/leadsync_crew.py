@@ -1,42 +1,35 @@
+"""
+src/leadsync_crew.py
+Workflow 1: Ticket Enrichment — Context Gatherer → Intent Reasoner → Propagator.
+Exports: run_leadsync_crew(payload) -> CrewRunResult
+"""
+
 import os
-from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
 
-
-DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
-
-
-@dataclass
-class CrewRunResult:
-    raw: str
-    model: str
-
-
-def _required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"Missing required env var: {name}")
-    return value
-
-
-def _build_tools(user_id: str) -> list[Any]:
-    _required_env("COMPOSIO_API_KEY")
-    os.environ.setdefault("COMPOSIO_CACHE_DIR", ".composio-cache")
-    from composio import Composio
-    from composio_crewai import CrewAIProvider
-
-    composio = Composio(provider=CrewAIProvider())
-    return composio.tools.get(user_id=user_id, toolkits=["JIRA", "GITHUB"])
+from src.shared import CrewRunResult, build_llm, build_tools
 
 
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
-    # gemini_api_key = _required_env("GEMINI_API_KEY")
-    # os.environ.setdefault("GOOGLE_API_KEY", gemini_api_key)
-    model = os.getenv("LEADSYNC_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    """
+    Run the Ticket Enrichment crew for a Jira webhook payload.
+
+    Args:
+        payload: Jira webhook JSON body.
+    Returns:
+        CrewRunResult with raw crew output and model used.
+    Raises:
+        RuntimeError: If required env vars are missing.
+        Exception: If crew.kickoff() fails and fallback also fails.
+    Side effects:
+        Writes back to Jira via Composio tools.
+    """
+    model = build_llm()
     composio_user_id = os.getenv("COMPOSIO_USER_ID", "default")
-    tools = _build_tools(user_id=composio_user_id)
+    tools = build_tools(user_id=composio_user_id, toolkits=["JIRA", "GITHUB"])
 
     issue_key = payload.get("issue", {}).get("key", "UNKNOWN")
     summary = payload.get("issue", {}).get("fields", {}).get("summary", "")
@@ -54,6 +47,16 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         c.get("name", "")
         for c in payload.get("issue", {}).get("fields", {}).get("components", [])
     ]
+
+    label = labels[0] if labels else "backend"
+    ruleset_map = {
+        "backend": "backend-ruleset.md",
+        "frontend": "frontend-ruleset.md",
+        "database": "db-ruleset.md",
+    }
+    ruleset_file = ruleset_map.get(label, "backend-ruleset.md")
+    ruleset_path = Path(__file__).parent.parent / "templates" / ruleset_file
+    ruleset_content = ruleset_path.read_text(encoding="utf-8") if ruleset_path.exists() else ""
 
     common_context = (
         f"Issue key: {issue_key}\n"
@@ -116,7 +119,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         description=(
             "From gathered context, generate:\n"
             "1) Personalized AI prompt for the assignee\n"
-            "2) Label-based rules snippet (backend/frontend/database fallback)\n"
+            f"2) Label-based rules from the ruleset below:\n{ruleset_content}\n"
             "3) Implementation output checklist (code/tests/docs)\n"
             f"{common_context}"
         ),
