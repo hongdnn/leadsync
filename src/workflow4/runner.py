@@ -5,7 +5,7 @@ from typing import Any
 
 from src.shared import CrewRunResult
 from src.workflow4.ai_writer import generate_ai_sections
-from src.workflow4.enrichment import render_full_pr_details
+from src.workflow4.enrichment import _clean_summary, render_full_pr_details
 from src.workflow4.ops import list_pr_files, upsert_pr_body
 from src.workflow4.parsing import parse_pr_context
 
@@ -73,6 +73,11 @@ def run_workflow4(payload: dict[str, Any], github_tools: list[Any], jira_tools: 
         implementation_override=ai_implementation,
         validation_override=ai_validation,
     )
+
+    # Always produce a title: prefer AI suggestion, fall back to cleaned summary/PR title.
+    if not ai_title:
+        ai_title = _clean_summary(ai_summary or pr.title, pr.jira_key)
+    logger.warning("Workflow4 final title: '%s'", ai_title)
 
     upsert_pr_body(github_tools, pr.owner, pr.repo, pr.number, details_block, title=ai_title)
     logger.warning(

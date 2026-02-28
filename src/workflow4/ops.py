@@ -147,3 +147,15 @@ def upsert_pr_body(
 
     variants = [base_a, base_b]
     run_tool_variants(tool, variants)
+
+    # If title was provided but the combined call might have silently ignored it,
+    # make a dedicated title-only update as a fallback.
+    if title:
+        try:
+            title_variants = [
+                {"owner": owner, "repo": repo, "pull_number": number, "title": title},
+                {"owner": owner, "repo": repo, "number": number, "title": title},
+            ]
+            run_tool_variants(tool, title_variants)
+        except Exception:
+            pass  # Best-effort; body update already succeeded above.
