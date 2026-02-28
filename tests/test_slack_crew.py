@@ -21,11 +21,14 @@ def test_parse_slack_text_single_word_returns_empty_question():
     assert question == ""
 
 
+@patch("src.slack_crew.Task")
+@patch("src.slack_crew.Agent")
 @patch("src.slack_crew.build_tools")
 @patch("src.slack_crew.build_llm")
 @patch("src.slack_crew.Crew")
 def test_run_slack_crew_returns_crew_run_result(
-    mock_crew_cls, mock_build_llm, mock_build_tools, monkeypatch, tmp_path
+    mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls,
+    monkeypatch, tmp_path
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
@@ -52,11 +55,14 @@ def test_run_slack_crew_returns_crew_run_result(
     mock_crew_instance.kickoff.assert_called_once()
 
 
+@patch("src.slack_crew.Task")
+@patch("src.slack_crew.Agent")
 @patch("src.slack_crew.build_tools")
 @patch("src.slack_crew.build_llm")
 @patch("src.slack_crew.Crew")
 def test_run_slack_crew_model_fallback(
-    mock_crew_cls, mock_build_llm, mock_build_tools, monkeypatch, tmp_path
+    mock_crew_cls, mock_build_llm, mock_build_tools, mock_agent_cls, mock_task_cls,
+    monkeypatch, tmp_path
 ):
     monkeypatch.setenv("COMPOSIO_USER_ID", "default")
     monkeypatch.setenv("SLACK_CHANNEL_ID", "C12345")
