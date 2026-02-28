@@ -3,7 +3,7 @@
 import re
 
 AREA_LINE_RE = re.compile(
-    r"AREA:\s*(?P<area>.+?)\s*\|\s*SUMMARY:\s*(?P<summary>.+?)\s*\|\s*RISKS:\s*(?P<risks>.+)",
+    r"AREA:\s*(?P<area>.+?)\s*\|\s*SUMMARY:\s*(?P<summary>.+?)\s*\|\s*(?:DECISIONS|RISKS):\s*(?P<risks>.+)",
     flags=re.IGNORECASE,
 )
 

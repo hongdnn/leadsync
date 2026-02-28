@@ -29,6 +29,8 @@ def _fallback_model_for_error(model: str, exc: Exception) -> str | None:
         "NOT_FOUND" in error_text or _is_empty_llm_response_error(exc)
     ):
         return model.replace("flash-lite", "flash")
+    if "2.5-flash" in model and _is_empty_llm_response_error(exc):
+        return model.replace("2.5-flash", "2.0-flash")
     return None
 
 

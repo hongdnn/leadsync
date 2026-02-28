@@ -27,6 +27,7 @@ def build_workflow1_crew(
     has_github_tools: bool,
     repo_owner: str,
     repo_name: str,
+    general_rules: str = "",
 ) -> tuple[Any, Any, Any, list[Any], Any]:
     """Assemble workflow1 agents/tasks/crew objects."""
     gatherer = runtime.Agent(
@@ -71,6 +72,7 @@ def build_workflow1_crew(
             preference_category=preference_category,
             team_preferences=team_preferences,
             common_context=context_text,
+            general_rules=general_rules,
         ),
         expected_output="Markdown containing exactly the five required sections for prompt-[ticket-key].md.",
         agent=reasoner,

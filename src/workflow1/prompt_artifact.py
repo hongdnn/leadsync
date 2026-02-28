@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from src.common.tool_helpers import find_tool_by_name
+from src.common.tool_response import response_indicates_failure, summarize_tool_response
 
 REQUIRED_SECTIONS = [
     "## Task",
@@ -79,8 +80,12 @@ def attach_prompt_file(tools: list[Any], issue_key: str, file_path: Path) -> Any
     resolved = file_path.resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Prompt file not found for attachment: {resolved}")
-    return tool.run(
+    response = tool.run(
         issue_key=issue_key,
         local_file_path=str(resolved),
         file_to_upload=str(resolved),
     )
+    if response_indicates_failure(response):
+        details = summarize_tool_response(response)
+        raise RuntimeError(f"JIRA_ADD_ATTACHMENT failed: {details}")
+    return response

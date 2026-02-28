@@ -38,8 +38,14 @@ def reason_description(
     preference_category: str,
     team_preferences: str,
     common_context: str,
+    general_rules: str = "",
 ) -> str:
     """Build reasoner task prompt text."""
+    general_rules_block = ""
+    if general_rules:
+        general_rules_block = (
+            f"Apply these general leader rules to ALL tickets:\n{general_rules}\n"
+        )
     return (
         "From gathered context, generate:\n"
         "1) One markdown document with these exact sections in order:\n"
@@ -52,6 +58,7 @@ def reason_description(
         "2) In the Context section, include a concise summary of previous same-label completed "
         "work so the assignee sees what has already been completed in this development phase.\n"
         "3) In the Key Files section, include exactly the key files from gatherer output with path, why, and confidence.\n"
+        f"{general_rules_block}"
         f"4) Apply rules from selected ruleset '{ruleset_file}':\n{ruleset_content}\n"
         f"5) Apply team preference guidance from Google Docs category '{preference_category}':\n"
         f"{team_preferences}\n"

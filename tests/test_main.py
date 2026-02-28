@@ -283,14 +283,35 @@ def test_slack_command_unexpected_error_returns_500(mock_run, client):
 
 # ── /slack/prefs endpoint ───────────────────────────────────────────────────
 
-def test_slack_prefs_returns_410_deprecated(client):
+@patch("src.main.memory_enabled", return_value=True)
+@patch("src.main.build_memory_db_path", return_value=":memory:")
+@patch("src.main.record_memory_item")
+def test_slack_prefs_stores_leader_rule(mock_record, mock_db_path, mock_enabled, client):
     response = client.post(
         "/slack/prefs",
-        content=b"text=add+Always+use+async",
+        content=b"text=Always+use+TypeScript",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    assert response.status_code == 410
-    assert "Google Docs" in response.json()["detail"]
+    assert response.status_code == 200
+    data = response.json()
+    assert data["response_type"] == "ephemeral"
+    assert "Always use TypeScript" in data["text"]
+    mock_record.assert_called_once_with(
+        db_path=":memory:",
+        workflow="slack_prefs",
+        item_type="leader_rule",
+        summary="Always use TypeScript",
+    )
+
+
+def test_slack_prefs_empty_text_returns_400(client):
+    response = client.post(
+        "/slack/prefs",
+        content=b"text=",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 400
+    assert "required" in response.json()["detail"].lower()
 
 
 def test_slack_prefs_ssl_check_returns_ok(client):

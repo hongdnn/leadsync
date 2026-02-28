@@ -207,7 +207,7 @@ Use this file as the live execution board.
 - [ ] Checkpoint A: Local environment + base integrations verified.
 - [ ] Checkpoint B: Workflow 1 production-like behavior verified.
 - [ ] Checkpoint C: All 3 workflows execute without exceptions.
-- [x] Checkpoint D: Tests green with target coverage. (107 tests passing, 92% coverage)
+- [x] Checkpoint D: Tests green with target coverage. (111 tests passing, 92% coverage)
 - [ ] Checkpoint E: Live deploy + external integrations verified.
 - [ ] Checkpoint F: Demo rehearsal complete and stable.
 
@@ -218,6 +218,7 @@ Use this file as the live execution board.
 | Date | Owner | Update |
 |------|-------|--------|
 | 2026-02-28 | Dev 2 | Hardened shared crew reliability for transient provider failures: `src/common/model_retry.py` now retries once on empty LLM responses and falls back `flash-lite` to `flash` when needed; added `tests/test_model_retry.py` and revalidated full suite (`pytest -q`: 107 passing). |
+| 2026-02-28 | Dev 2 | Hardened Workflow 1 Jira write-back reliability: added deterministic `JIRA_EDIT_ISSUE` + `JIRA_ADD_COMMENT` calls after prompt generation, added strict tool-response failure detection (`src/common/tool_response.py`), and upgraded attachment handling to raise on failure payloads (not only exceptions); expanded tests and revalidated (`pytest -q`: 111 passing, coverage: 92%). |
 | 2026-02-28 | Dev 1 + Dev 2 | Implemented Workflow 1 GitHub related-file integration: wired GitHub repo env targeting into Jira enrichment runs, merged Jira+GitHub tooling for gatherer context, enforced hard-fail when GitHub context is unavailable, added deterministic key-file extraction contract (`KEY_FILE: ...`), and upgraded prompt artifact requirements with a dedicated `## Key Files` section plus parser tests. |
 | 2026-02-28 | Dev 1 + Dev 2 | Fixed Workflow 2 GitHub targeting ambiguity that caused runtime "provide repository owner and name" responses: added explicit repo target propagation (`repo_owner`/`repo_name`) from `/digest/trigger` payload with env fallback, updated scanner prompt contract, expanded tests, and documented Railway cron env requirements. |
 | 2026-02-28 | Dev 1 + Dev 2 | Finalized demo-hourly digest behavior: Workflow 2 prompt contract now forces explicit no-commit heartbeat output (`AREA: general | SUMMARY: No meaningful commits ...`), quickstart now includes dedicated Slack channel setup/invite flow + manual verification call, and tests were expanded for quiet-hour behavior. |

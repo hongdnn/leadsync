@@ -119,6 +119,41 @@ def test_query_slack_memory_context_filters_similar_label_component(tmp_path):
     assert "LEADS-111" not in text
 
 
+def test_query_leader_rules_returns_formatted_rules(tmp_path):
+    from src.memory_store import init_memory_db, query_leader_rules, record_memory_item
+
+    db_path = tmp_path / "leadsync.db"
+    init_memory_db(str(db_path))
+
+    record_memory_item(
+        db_path=str(db_path),
+        workflow="slack_prefs",
+        item_type="leader_rule",
+        summary="Always use TypeScript",
+    )
+    record_memory_item(
+        db_path=str(db_path),
+        workflow="slack_prefs",
+        item_type="leader_rule",
+        summary="Prefer functional components",
+    )
+
+    result = query_leader_rules(str(db_path))
+    assert "General Leader Rules:" in result
+    assert "- Always use TypeScript" in result
+    assert "- Prefer functional components" in result
+
+
+def test_query_leader_rules_returns_empty_when_no_rules(tmp_path):
+    from src.memory_store import init_memory_db, query_leader_rules
+
+    db_path = tmp_path / "leadsync.db"
+    init_memory_db(str(db_path))
+
+    result = query_leader_rules(str(db_path))
+    assert result == ""
+
+
 def test_acquire_idempotency_lock_is_insert_once(tmp_path):
     from src.memory_store import acquire_idempotency_lock, init_memory_db
 

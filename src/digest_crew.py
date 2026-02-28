@@ -71,11 +71,24 @@ def run_digest_crew(
         record_memory_item=record_memory_item,
         acquire_idempotency_lock=acquire_idempotency_lock,
     )
+    github_tools = build_tools(
+        user_id=composio_user_id,
+        toolkits=["GITHUB"],
+        limit=10,
+    )
+    slack_tools = build_tools(user_id=composio_user_id, toolkits=["SLACK"])
+    logger.info(
+        "Digest crew tool counts: github=%d, slack=%d (names: %s | %s)",
+        len(github_tools),
+        len(slack_tools),
+        [getattr(t, "name", "?") for t in github_tools],
+        [getattr(t, "name", "?") for t in slack_tools],
+    )
     return run_workflow2(
         model=model,
         slack_channel_id=slack_channel_id,
-        github_tools=build_tools(user_id=composio_user_id, toolkits=["GITHUB"]),
-        slack_tools=build_tools(user_id=composio_user_id, toolkits=["SLACK"]),
+        github_tools=github_tools,
+        slack_tools=slack_tools,
         runtime=runtime,
         logger=logger,
         window_minutes=effective_window,

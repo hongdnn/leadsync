@@ -100,3 +100,32 @@ def query_slack_memory_context(
     else:
         lines.append("- None.")
     return "\n".join(lines)
+
+
+def query_leader_rules(db_path: str) -> str:
+    """
+    Fetch all general leader rules from memory_items.
+
+    Args:
+        db_path: Path to the SQLite memory database.
+    Returns:
+        Formatted text block of leader rules for prompt injection,
+        or empty string when no rules exist.
+    """
+    init_memory_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT summary, created_at
+            FROM memory_items
+            WHERE item_type = 'leader_rule'
+            ORDER BY created_at ASC
+            """,
+        ).fetchall()
+    if not rows:
+        return ""
+    lines = ["General Leader Rules:"]
+    for row in rows:
+        lines.append(f"- {row['summary']}")
+    return "\n".join(lines)

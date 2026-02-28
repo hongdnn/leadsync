@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from src.digest_crew import run_digest_crew
 from src.leadsync_crew import run_leadsync_crew
-from src.memory_store import init_memory_db
+from src.memory_store import init_memory_db, record_memory_item
 from src.pr_review_crew import run_pr_review_crew
 from src.shared import build_memory_db_path, memory_enabled
 from src.slack_crew import parse_slack_text, run_slack_crew
@@ -220,30 +220,42 @@ async def slack_command(
 @app.post("/slack/prefs")
 async def slack_prefs(request: Request) -> dict[str, str]:
     """
-    Deprecated endpoint for legacy /leadsync-prefs slash command.
+    Store a general leader rule via Slack slash command.
 
-    Accepts Slack application/x-www-form-urlencoded payload and returns
-    deprecation guidance to use Google Docs as the single preference source.
+    Accepts Slack application/x-www-form-urlencoded payload with a 'text'
+    field containing the rule to persist.
 
     Args:
         request: FastAPI Request for content-type handling.
     Returns:
-        `{"status":"ok"}` for Slack ssl_check probes.
+        Confirmation message or `{"status":"ok"}` for Slack ssl_check probes.
     Raises:
-        HTTPException 410: Endpoint has been retired.
+        HTTPException 400: When text field is empty or memory is disabled.
     """
     raw_body = await request.body()
     form_data = parse_qs(raw_body.decode("utf-8"))
 
     if form_data.get("ssl_check", [""])[0].strip() == "1":
         return {"status": "ok"}
-    raise HTTPException(
-        status_code=410,
-        detail=(
-            "The /slack/prefs endpoint is deprecated. "
-            "Update team preferences in the linked Google Docs files."
-        ),
+
+    text = form_data.get("text", [""])[0].strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Rule text is required.")
+
+    if not memory_enabled():
+        raise HTTPException(status_code=400, detail="Memory is disabled.")
+
+    db_path = build_memory_db_path()
+    record_memory_item(
+        db_path=db_path,
+        workflow="slack_prefs",
+        item_type="leader_rule",
+        summary=text,
     )
+    return {
+        "response_type": "ephemeral",
+        "text": f"Leader rule saved: {text}",
+    }
 
 
 def _run_slack_crew_background(

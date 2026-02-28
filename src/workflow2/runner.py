@@ -56,10 +56,10 @@ def run_workflow2(
     scanner = runtime.Agent(
         role="GitHub Scanner",
         goal=(
-            "Collect meaningful main-branch commit activity "
+            "Collect all main-branch commit activity "
             f"from repository {repo_owner}/{repo_name} in the last {window_minutes} minutes."
         ),
-        backstory="You gather commit signals only and avoid speculation.",
+        backstory="You gather every commit and report them all without filtering.",
         verbose=True,
         tools=github_tools,
         llm=model,
@@ -82,26 +82,26 @@ def run_workflow2(
     scan_task = runtime.Task(
         description=(
             f"Use GITHUB tools only for repository {repo_owner}/{repo_name} "
-            f"to scan main-branch changes from the last {window_minutes} minutes.\n"
-            "- Include author, commit summary, impacted area, and risk flags.\n"
-            "- Exclude noise-only commits when possible.\n"
-            "- If no meaningful commits are found, return 'NO_MEANINGFUL_COMMITS'."
+            f"to list ALL main-branch commits from the last {window_minutes} minutes.\n"
+            "- Include every commit — do not skip or filter any.\n"
+            "- For each commit: author, commit message, and impacted area.\n"
+            "- If no commits exist in the window, return 'NO_COMMITS'."
         ),
-        expected_output="Structured list of meaningful commits grouped by area.",
+        expected_output="Complete list of commits from the time window.",
         agent=scanner,
     )
     write_task = runtime.Task(
         description=(
-            f"Draft a concise {digest_label.lower()} digest from scanned commits.\n"
-            "- Group by subsystem.\n"
-            "- Mention key risks and follow-ups.\n"
+            f"Draft a concise {digest_label.lower()} digest from all scanned commits.\n"
+            "- Summarize key changes and new decisions made in the commits.\n"
+            "- Group by subsystem or area.\n"
             "- Keep under 12 lines.\n"
             "- Output lines in this exact format:\n"
-            "  AREA: <name> | SUMMARY: <text> | RISKS: <text>\n"
-            "- If scanner output is 'NO_MEANINGFUL_COMMITS', output exactly one line:\n"
-            f"  AREA: general | SUMMARY: No meaningful commits in last {window_minutes} minutes. | RISKS: None."
+            "  AREA: <name> | SUMMARY: <text> | DECISIONS: <text>\n"
+            "- If scanner output is 'NO_COMMITS', output exactly one line:\n"
+            f"  AREA: general | SUMMARY: No commits in last {window_minutes} minutes. | DECISIONS: None."
         ),
-        expected_output="A polished plain-text daily digest message.",
+        expected_output="A polished plain-text digest summarizing all changes and decisions.",
         agent=writer,
         context=[scan_task],
     )
