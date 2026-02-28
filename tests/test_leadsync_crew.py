@@ -368,7 +368,7 @@ def test_run_leadsync_crew_writes_required_prompt_sections_and_attaches(
     gather_desc = mock_task_cls.call_args_list[0][1]["description"]
     reason_desc = mock_task_cls.call_args_list[1][1]["description"]
     propagate_desc = mock_task_cls.call_args_list[2][1]["description"]
-    assert "latest 10 completed same-label tickets" in gather_desc
+    assert "latest 5 completed same-label tickets" in gather_desc
     assert "source files or modules likely impacted" in gather_desc
     assert "same-label completed work" in reason_desc
     assert "Google Docs category" in reason_desc

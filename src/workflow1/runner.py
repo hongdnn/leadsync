@@ -11,15 +11,14 @@ from src.common.tool_helpers import has_tool_prefix, tool_name_set
 from src.shared import CrewRunResult
 from src.workflow1.context import IssueContext, parse_issue_context
 from src.workflow1.crew_build import build_workflow1_crew
-from src.workflow1.jira_writeback import (
-    apply_jira_writeback,
-    build_comment_text,
-    build_description_text,
+from src.workflow1.key_files import (
+    filter_demo_key_files,
+    format_key_files_markdown,
+    parse_key_files,
+    suggest_demo_key_files,
 )
-from src.workflow1.key_files import format_key_files_markdown, parse_key_files
 from src.workflow1.ops import persist_workflow1_memory, validate_github_requirements
 from src.workflow1.prompt_artifact import normalize_prompt_markdown
-from src.memory_store import query_leader_rules
 from src.workflow1.rules import load_ruleset_content
 
 
@@ -89,14 +88,8 @@ def run_workflow1(
         project_key=issue.project_key,
         label=issue.primary_label,
         exclude_issue_key=issue.issue_key,
-        limit=10,
+        limit=5,
     )
-    general_rules = ""
-    if runtime.memory_enabled():
-        try:
-            general_rules = query_leader_rules(runtime.build_memory_db_path())
-        except Exception:
-            logger.exception("Failed to load general leader rules from memory.")
     context_text = _common_context(issue) + f"Same-label history context:\n{same_label_history}\n"
     gather_task, reason_task, _propagate_task, agents, crew = build_workflow1_crew(
         runtime=runtime,
@@ -115,7 +108,6 @@ def run_workflow1(
         has_github_tools=has_github_tools,
         repo_owner=repo_owner,
         repo_name=repo_name,
-        general_rules=general_rules,
     )
     result, used_model = kickoff_with_model_fallback(
         crew=crew,
@@ -125,10 +117,14 @@ def run_workflow1(
         label="LeadSync",
     )
     gathered = extract_task_output(gather_task)
-    key_files = parse_key_files(gathered)
+    parsed_key_files = parse_key_files(gathered)
+    key_files = filter_demo_key_files(parsed_key_files)
+    if not key_files:
+        issue_text = f"{issue.summary}\n{issue.issue_description or ''}\nLabels: {' '.join(issue.labels)}"
+        key_files = suggest_demo_key_files(issue_text=issue_text, repo_root=Path.cwd())
     if not key_files:
         raise RuntimeError(
-            "Workflow 1 GitHub key-file discovery returned no KEY_FILE entries."
+            "Workflow 1 found no demo-scoped key-file suggestions under /demo."
         )
     key_files_markdown = format_key_files_markdown(key_files)
     reasoned = extract_task_output(reason_task)
@@ -139,29 +135,6 @@ def run_workflow1(
         gathered_context=gathered,
         key_files_markdown=key_files_markdown,
         ruleset_content=ruleset_content,
-    )
-    comment_text = build_comment_text(
-        issue_key=issue.issue_key,
-        summary=issue.summary,
-        same_label_history=same_label_history,
-        key_files_markdown=key_files_markdown,
-        repo_owner=repo_owner,
-        repo_name=repo_name,
-    )
-    description_text = build_description_text(
-        issue_key=issue.issue_key,
-        summary=issue.summary,
-        prompt_markdown=prompt_markdown,
-        key_files_markdown=key_files_markdown,
-        repo_owner=repo_owner,
-        repo_name=repo_name,
-    )
-    apply_jira_writeback(
-        tools=tools,
-        issue_key=issue.issue_key,
-        comment_text=comment_text,
-        description_text=description_text,
-        logger=logger,
     )
     prompt_path = runtime.write_prompt_file(issue.issue_key, prompt_markdown)
     runtime.attach_prompt_file(tools, issue.issue_key, prompt_path)

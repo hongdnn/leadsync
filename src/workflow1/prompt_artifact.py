@@ -32,7 +32,7 @@ def normalize_prompt_markdown(
 ) -> str:
     """Build required-section markdown from reasoner output with safe fallback."""
     if reasoner_text and has_required_sections(reasoner_text):
-        return reasoner_text.strip() + "\n"
+        return _replace_key_files_section(reasoner_text.strip(), key_files_markdown) + "\n"
     summary_text = summary.strip() or "No summary provided."
     context_text = gathered_context.strip() or "No additional context gathered."
     constraints_text = (
@@ -57,6 +57,34 @@ def normalize_prompt_markdown(
         "## Expected Output\n"
         f"{expected_output}\n"
     )
+
+
+def _replace_key_files_section(markdown: str, key_files_markdown: str) -> str:
+    """Replace existing `## Key Files` section body with normalized key-file markdown."""
+    marker = "## Key Files"
+    if marker not in markdown:
+        return markdown
+    lines = markdown.splitlines()
+    out: list[str] = []
+    i = 0
+    replaced = False
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == marker and not replaced:
+            out.append(line)
+            if key_files_markdown.strip():
+                out.extend(key_files_markdown.splitlines())
+            i += 1
+            while i < len(lines):
+                candidate = lines[i]
+                if candidate.startswith("## ") and candidate.strip() != marker:
+                    break
+                i += 1
+            replaced = True
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out).strip()
 
 
 def safe_issue_key_for_filename(issue_key: str) -> str:

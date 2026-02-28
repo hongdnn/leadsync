@@ -81,9 +81,14 @@ def build_workflow1_crew(
     propagate_task = runtime.Task(
         description=propagate_description(
             tool_names=sorted(tool_names),
+            common_context=context_text,
             has_comment=has_jira_add_comment,
             has_edit=has_jira_edit_issue,
             has_attach=has_jira_add_attachment,
+            ruleset_file=ruleset_file,
+            ruleset_content=ruleset_content,
+            preference_category=preference_category,
+            team_preferences=team_preferences,
         ),
         expected_output="Confirmation of Jira write-back actions taken.",
         agent=propagator,
