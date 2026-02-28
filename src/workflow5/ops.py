@@ -12,7 +12,6 @@ from src.common.tool_response import response_indicates_failure, summarize_tool_
 
 logger = logging.getLogger(__name__)
 
-JIRA_COMMENT_MARKER = "<!-- leadsync:wf5 -->"
 
 
 def _run_required_tool(tool: Any, action: str, **kwargs: Any) -> Any:
@@ -47,21 +46,18 @@ def _build_pr_link_comment(
     Returns:
         Formatted comment string with idempotency marker.
     """
-    lines = [JIRA_COMMENT_MARKER]
-    header = f"*Pull Request #{pr_number} Linked*"
+    lines = [f"Pull Request #{pr_number} Linked"]
     if pr_title:
-        header = f"*Pull Request #{pr_number} Linked — {pr_title}*"
-    lines.append(header)
-    lines.append("")
-    lines.append(f"|*PR*|[#{pr_number} — {pr_title or 'View PR'}|{pr_url}]|")
+        lines.append(f"Title: {pr_title}")
+    lines.append(f"URL: {pr_url}")
     if branch:
-        lines.append(f"|*Branch*|{{{{{branch}}}}}|")
+        lines.append(f"Branch: {branch}")
     if owner and repo:
-        lines.append(f"|*Repository*|{owner}/{repo}|")
+        lines.append(f"Repository: {owner}/{repo}")
     if head_sha:
-        lines.append(f"|*Latest Commit*|{{{{{head_sha[:7]}}}}}|")
+        lines.append(f"Commit: {head_sha[:7]}")
     lines.append("")
-    lines.append("_Automatically linked by LeadSync_")
+    lines.append("— Automatically linked by LeadSync")
     return "\n".join(lines)
 
 
@@ -101,7 +97,7 @@ def post_jira_pr_link_comment(
         try:
             response = get_tool.run(issue_id_or_key=ticket_key)
             resp_str = str(response)
-            if JIRA_COMMENT_MARKER in resp_str and pr_url in resp_str:
+            if pr_url in resp_str:
                 return "skipped:duplicate"
         except Exception:
             logger.warning("WF5: JIRA_GET_ISSUE check failed for %s; proceeding.", ticket_key)

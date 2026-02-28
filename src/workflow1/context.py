@@ -30,6 +30,9 @@ class IssueContext:
 def parse_issue_context(payload: dict[str, Any]) -> IssueContext:
     """Normalize Jira webhook payload into a stable context object."""
     issue = safe_dict(payload.get("issue")) or safe_dict(payload.get("workItem"))
+    # Fallback: if no wrapper found but payload itself looks like an issue, use it directly.
+    if not issue and ("key" in payload or "id" in payload):
+        issue = payload
     fields = safe_dict(issue.get("fields"))
     issue_key = issue.get("key", issue.get("id", "UNKNOWN"))
     labels_raw = fields.get("labels", issue.get("labels", []))

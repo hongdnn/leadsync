@@ -119,12 +119,21 @@ def jira_done_webhook(payload: dict[str, Any]) -> dict[str, str]:
         HTTPException 400: Missing env vars.
         HTTPException 500: Crew failure.
     """
-    wrapped = {
-        "issue": payload,
-        "changelog": {
+    logger.info("WF6 /webhooks/jira/done raw payload keys: %s", list(payload.keys()))
+    # If the payload already contains an "issue" wrapper (Jira Automation
+    # "Issue data (Jira format)" may include one), avoid double-wrapping.
+    if "issue" in payload:
+        wrapped = payload
+        wrapped.setdefault("changelog", {
             "items": [{"field": "status", "fromString": "In Review", "toString": "Done"}]
-        },
-    }
+        })
+    else:
+        wrapped = {
+            "issue": payload,
+            "changelog": {
+                "items": [{"field": "status", "fromString": "In Review", "toString": "Done"}]
+            },
+        }
     try:
         result = run_done_scan_crew(payload=wrapped)
     except RuntimeError as exc:
