@@ -249,8 +249,9 @@ async def digest_trigger(request: Request) -> dict[str, str]:
             kwargs["repo_owner"] = repo_owner
         if repo_name:
             kwargs["repo_name"] = repo_name
-        result = run_digest_crew(
-            **kwargs
+        result = await asyncio.to_thread(
+            run_digest_crew,
+            **kwargs,
         )
     except RuntimeError as exc:
         manager.broadcast_sync(make_event("workflow_error", "WF2-Digest", content=str(exc)))
