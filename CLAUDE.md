@@ -119,7 +119,23 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 
 ---
 
-## 7. Coding Standards
+## 7. Shell & Environment
+
+**This project runs on Windows. Use Windows shell syntax for all commands.**
+
+- Use `venv\Scripts\activate` (not `source venv/bin/activate`) to activate the virtual environment.
+- Before running any Python command (`python`, `pytest`, `pip`, `uvicorn`, etc.), activate the venv first:
+  ```
+  venv\Scripts\activate && python ...
+  ```
+- Use backslashes for paths in shell commands, or quote forward-slash paths. Use `set VAR=value` not `export`.
+- Never use Unix-only constructs (`&&` chaining works in cmd/PowerShell, but avoid `source`, `/dev/null`, etc.).
+
+**When finishing work on a worktree and it's ready for developer handoff, always offer to push the changes to `main`** (e.g., merge or fast-forward the worktree branch into main and push). Present this as a clear yes/no option before doing so.
+
+---
+
+## 8. Coding Standards
 
 - All logic in `src/`. No root-level scripts.
 - `@dataclass` for return types (e.g., `CrewRunResult`). Type hints on all function signatures.
@@ -131,7 +147,7 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 - Write tests before implementation (TDD).
 - Tests in `tests/` mirroring `src/` structure.
@@ -141,7 +157,7 @@ Workflow 1 output is **one file only**: `prompt-[ticket-key].md`. It contains Ta
 
 ---
 
-## 9. What's Cut — Do Not Re-Add
+## 10. What's Cut — Do Not Re-Add
 
 - ❌ Two output files per ticket — one `prompt-[ticket-key].md` only
 - ❌ PR webhooks — main branch commits only

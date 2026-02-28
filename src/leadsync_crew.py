@@ -1,16 +1,17 @@
-from dataclasses import dataclass
+"""
+src/leadsync_crew.py
+Workflow 1: Ticket Enrichment — Context Gatherer → Intent Reasoner → Propagator.
+Exports: run_leadsync_crew(payload) -> CrewRunResult
+"""
+
+from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Crew, Process, Task
 
 from src.config import Config
+from src.shared import CrewRunResult
 from src.tools.jira_tools import get_agent_tools
-
-
-@dataclass
-class CrewRunResult:
-    raw: str
-    model: str
 
 
 def _tool_name_set(tools: list[Any]) -> set[str]:
@@ -18,6 +19,19 @@ def _tool_name_set(tools: list[Any]) -> set[str]:
 
 
 def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
+    """
+    Run the Ticket Enrichment crew for a Jira webhook payload.
+
+    Args:
+        payload: Jira webhook JSON body.
+    Returns:
+        CrewRunResult with raw crew output and model used.
+    Raises:
+        RuntimeError: If required env vars are missing.
+        Exception: If crew.kickoff() fails and fallback also fails.
+    Side effects:
+        Writes back to Jira via Composio tools.
+    """
     Config.require_env("GOOGLE_API_KEY")
     model = Config.get_gemini_model()
     tools = get_agent_tools()
@@ -43,6 +57,16 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         c.get("name", "")
         for c in payload.get("issue", {}).get("fields", {}).get("components", [])
     ]
+
+    label = labels[0] if labels else "backend"
+    ruleset_map = {
+        "backend": "backend-ruleset.md",
+        "frontend": "frontend-ruleset.md",
+        "database": "db-ruleset.md",
+    }
+    ruleset_file = ruleset_map.get(label, "backend-ruleset.md")
+    ruleset_path = Path(__file__).parent.parent / "templates" / ruleset_file
+    ruleset_content = ruleset_path.read_text(encoding="utf-8") if ruleset_path.exists() else ""
 
     common_context = (
         f"Issue key: {issue_key}\n"
@@ -109,7 +133,7 @@ def run_leadsync_crew(payload: dict[str, Any]) -> CrewRunResult:
         description=(
             "From gathered context, generate:\n"
             "1) Personalized AI prompt for the assignee\n"
-            "2) Label-based rules snippet (backend/frontend/database fallback)\n"
+            f"2) Label-based rules from the ruleset below:\n{ruleset_content}\n"
             "3) Implementation output checklist (code/tests/docs)\n"
             f"{common_context}"
         ),
